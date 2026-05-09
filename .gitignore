@@ -1,14 +1,40 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend Python
+backend/.venv/
+.venv/
 __pycache__/
 *.pyc
-.next/
-.venv/
-.env
-.DS_Store
 
 # Backend uploads directory
 backend/uploads/*
 !backend/uploads/.gitkeep
 
-# ML models (added in later phases - root level only)
+# General uploads (dev)
+uploads/
+
+# ML models (added in later phases)
 /models/
+models/
