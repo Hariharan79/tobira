@@ -3,7 +3,12 @@ __pycache__/
 *.pyc
 .next/
 .venv/
-uploads/
-models/
 .env
 .DS_Store
+
+# Backend uploads directory
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ML models (added in later phases - root level only)
+/models/
