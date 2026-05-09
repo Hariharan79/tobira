@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -20,10 +21,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Read frontend origin from environment, default to localhost for dev
+frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+
 # Configure CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[frontend_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
