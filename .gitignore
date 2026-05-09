@@ -1,9 +1,38 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend (from Plan A)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/.venv/
 __pycache__/
 *.pyc
-.next/
+
+# Python
 .venv/
+
+# Uploads
 uploads/
+
+# Models
 models/
-.env
-.DS_Store
