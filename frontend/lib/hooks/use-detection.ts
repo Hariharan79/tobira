@@ -3,17 +3,24 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { detectPanels } from "@/lib/api";
-import type { Panel } from "@/lib/types";
+import type { Panel, ReadingDirection } from "@/lib/types";
 
 interface DetectionState {
   isDetecting: boolean;
   panels: Panel[] | null;
   contentType: "manga" | "western" | "unknown" | null;
+  direction: ReadingDirection | null;
+  ambiguous: boolean;
   error: string | null;
 }
 
+interface DetectionOptions {
+  modelHint?: "manga" | "western";
+  direction?: ReadingDirection;
+}
+
 interface UseDetectionReturn extends DetectionState {
-  detect: (uuid: string, modelHint?: "manga" | "western") => Promise<void>;
+  detect: (uuid: string, options?: DetectionOptions) => Promise<void>;
   reset: () => void;
 }
 
@@ -22,17 +29,20 @@ interface UseDetectionReturn extends DetectionState {
  *
  * Handles API calls, loading state, error handling, and toast notifications.
  * Follows same pattern as useFileUpload from Phase 1.
+ * Extended in Phase 3 to support direction parameter per D-05.
  */
 export function useDetection(): UseDetectionReturn {
   const [state, setState] = useState<DetectionState>({
     isDetecting: false,
     panels: null,
     contentType: null,
+    direction: null,
+    ambiguous: false,
     error: null,
   });
 
   const detect = useCallback(
-    async (uuid: string, modelHint?: "manga" | "western") => {
+    async (uuid: string, options?: DetectionOptions) => {
       setState((prev) => ({
         ...prev,
         isDetecting: true,
@@ -40,12 +50,14 @@ export function useDetection(): UseDetectionReturn {
       }));
 
       try {
-        const result = await detectPanels(uuid, modelHint);
+        const result = await detectPanels(uuid, options);
 
         setState({
           isDetecting: false,
           panels: result.panels,
           contentType: result.content_type,
+          direction: result.direction,
+          ambiguous: result.ambiguous,
           error: null,
         });
 
@@ -53,7 +65,7 @@ export function useDetection(): UseDetectionReturn {
         const panelCount = result.panels.length;
         if (panelCount > 0) {
           toast.success("Panels detected", {
-            description: `Found ${panelCount} panel${panelCount === 1 ? "" : "s"} (${result.content_type})`,
+            description: `Found ${panelCount} panel${panelCount === 1 ? "" : "s"} (${result.content_type}, ${result.direction.toUpperCase()})`,
           });
         } else {
           toast.info("No panels detected", {
@@ -80,6 +92,8 @@ export function useDetection(): UseDetectionReturn {
       isDetecting: false,
       panels: null,
       contentType: null,
+      direction: null,
+      ambiguous: false,
       error: null,
     });
   }, []);
