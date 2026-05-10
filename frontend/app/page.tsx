@@ -1,34 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { DropZone } from "@/components/drop-zone";
 import { ImageDisplay } from "@/components/image-display";
 import { useUploadPersistence } from "@/lib/hooks/use-persistence";
+import { useDetection } from "@/lib/hooks/use-detection";
 import { getImageUrl, type UploadResponse } from "@/lib/api";
 
 export default function Home() {
   const { lastUpload, saveUpload, clearUpload, isLoaded } = useUploadPersistence();
   const [currentImage, setCurrentImage] = useState<{ uuid: string; url: string } | null>(null);
+  const { isDetecting, panels, detect, reset } = useDetection();
+
+  // Memoize detect to avoid triggering useEffect dependency warnings
+  const runDetection = useCallback(
+    (uuid: string) => {
+      detect(uuid);
+    },
+    [detect]
+  );
 
   // Restore from localStorage on mount per D-18
+  // Auto-detect on restore if we have a saved upload
   useEffect(() => {
     if (isLoaded && lastUpload) {
       setCurrentImage({
         uuid: lastUpload.uuid,
         url: getImageUrl(lastUpload.uuid),
       });
+      // Auto-detect on restore
+      runDetection(lastUpload.uuid);
     }
-  }, [isLoaded, lastUpload]);
+  }, [isLoaded, lastUpload, runDetection]);
 
   const handleUploadSuccess = (data: UploadResponse) => {
     const imageUrl = getImageUrl(data.uuid);
     setCurrentImage({ uuid: data.uuid, url: imageUrl });
     saveUpload({ uuid: data.uuid, url: imageUrl });
+
+    // Auto-detect on upload (per D-03: eager detection)
+    detect(data.uuid);
   };
 
   const handleClear = () => {
     setCurrentImage(null);
     clearUpload();
+    reset(); // Clear detection state
+  };
+
+  const handleRedetect = () => {
+    if (currentImage) {
+      detect(currentImage.uuid);
+    }
+  };
+
+  const handleStartReading = () => {
+    // Phase 4 will implement the TikTok-style reader
+    // For now, show a toast indicating feature is coming
+    toast.info("Reader coming in Phase 4", {
+      description: "Panel-by-panel reading will be available soon!",
+    });
   };
 
   // Don't render until persistence is loaded to avoid hydration mismatch
@@ -46,6 +78,10 @@ export default function Home() {
         <ImageDisplay
           src={currentImage.url}
           onClear={handleClear}
+          panels={panels}
+          isDetecting={isDetecting}
+          onRedetect={handleRedetect}
+          onStartReading={handleStartReading}
         />
       ) : (
         <DropZone onUploadSuccess={handleUploadSuccess} />
