@@ -5,6 +5,7 @@ import type { Panel } from "@/lib/types";
 
 interface PanelOverlayProps {
   panels: Panel[];
+  direction?: "ltr" | "rtl";  // For animation key per D-08
   className?: string;
 }
 
@@ -16,7 +17,11 @@ interface PanelOverlayProps {
  *
  * Must be used inside a relative-positioned container that wraps the image.
  */
-export function PanelOverlay({ panels, className }: PanelOverlayProps) {
+export function PanelOverlay({
+  panels,
+  direction = "ltr",
+  className,
+}: PanelOverlayProps) {
   return (
     <div className={cn("absolute inset-0 pointer-events-none", className)}>
       {panels.map((panel) => {
@@ -38,7 +43,9 @@ export function PanelOverlay({ panels, className }: PanelOverlayProps) {
             }}
           >
             {/* Numbered badge at top-left corner (per D-04) */}
+            {/* Key includes direction to force remount on toggle (per D-08) */}
             <span
+              key={`badge-${panel.id}-${direction}`}
               className={cn(
                 "absolute -top-3 -left-3",
                 "w-6 h-6 rounded-full",
@@ -46,7 +53,9 @@ export function PanelOverlay({ panels, className }: PanelOverlayProps) {
                 "text-xs font-bold",
                 "flex items-center justify-center",
                 "shadow-md",
-                "pointer-events-auto cursor-default"
+                "pointer-events-auto cursor-default",
+                // Animation on mount (triggered by key change) per D-08
+                "animate-in fade-in zoom-in-95 duration-200"
               )}
               title={`Panel ${panel.id} (${Math.round(panel.confidence * 100)}% confidence)`}
             >
