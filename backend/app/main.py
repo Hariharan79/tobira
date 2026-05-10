@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.detect import router as detect_router
 from app.routes.upload import UPLOAD_DIR, router as upload_router
 
 
@@ -35,3 +36,4 @@ app.add_middleware(
 
 # Include routes
 app.include_router(upload_router)
+app.include_router(detect_router)

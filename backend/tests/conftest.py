@@ -14,6 +14,7 @@ def client():
     """Create test client with temporary upload directory."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Override upload directory for tests
+        # Note: detect module accesses upload_module.UPLOAD_DIR dynamically
         original_dir = upload_module.UPLOAD_DIR
         upload_module.UPLOAD_DIR = Path(tmp_dir)
 
