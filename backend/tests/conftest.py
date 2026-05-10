@@ -1,3 +1,4 @@
+import io
 import tempfile
 from pathlib import Path
 
@@ -451,3 +452,13 @@ def sample_png() -> bytes:
             0x82,
         ]
     )
+
+
+@pytest.fixture
+def uploaded_jpeg(client, sample_jpeg):
+    """Upload a sample JPEG and return the uuid."""
+    response = client.post(
+        "/api/upload",
+        files={"file": ("test.jpg", io.BytesIO(sample_jpeg), "image/jpeg")},
+    )
+    return response.json()["uuid"]
