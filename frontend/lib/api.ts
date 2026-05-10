@@ -44,16 +44,25 @@ export function getImageUrl(uuid: string): string {
  * Detect panels in an uploaded image.
  *
  * @param uuid - Upload UUID from /api/upload
- * @param modelHint - Optional "manga" or "western" to override auto-detection
- * @returns DetectionResponse with panels array and content_type
+ * @param options - Optional detection options
+ * @param options.modelHint - "manga" or "western" to override auto-detection
+ * @param options.direction - "ltr" or "rtl" to override auto direction (per D-05)
+ * @returns DetectionResponse with panels array, content_type, direction, and ambiguous flag
  */
 export async function detectPanels(
   uuid: string,
-  modelHint?: "manga" | "western",
+  options?: {
+    modelHint?: "manga" | "western";
+    direction?: "ltr" | "rtl";
+  },
 ): Promise<DetectionResponse> {
-  const params = modelHint ? `?model_hint=${modelHint}` : "";
-  const response = await api.post<DetectionResponse>(
-    `/api/detect/${uuid}${params}`,
-  );
+  const params = new URLSearchParams();
+  if (options?.modelHint) params.set("model_hint", options.modelHint);
+  if (options?.direction) params.set("direction", options.direction);
+
+  const queryString = params.toString();
+  const url = `/api/detect/${uuid}${queryString ? `?${queryString}` : ""}`;
+
+  const response = await api.post<DetectionResponse>(url);
   return response.data;
 }
