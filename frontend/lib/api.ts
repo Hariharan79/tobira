@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import type { DetectionResponse } from "./types";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface UploadResponse {
@@ -36,4 +38,22 @@ export async function uploadFile(
 
 export function getImageUrl(uuid: string): string {
   return `${API_URL}/api/uploads/${uuid}`;
+}
+
+/**
+ * Detect panels in an uploaded image.
+ *
+ * @param uuid - Upload UUID from /api/upload
+ * @param modelHint - Optional "manga" or "western" to override auto-detection
+ * @returns DetectionResponse with panels array and content_type
+ */
+export async function detectPanels(
+  uuid: string,
+  modelHint?: "manga" | "western",
+): Promise<DetectionResponse> {
+  const params = modelHint ? `?model_hint=${modelHint}` : "";
+  const response = await api.post<DetectionResponse>(
+    `/api/detect/${uuid}${params}`,
+  );
+  return response.data;
 }
