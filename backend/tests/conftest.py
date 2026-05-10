@@ -1,3 +1,4 @@
+import io
 import tempfile
 from pathlib import Path
 
@@ -13,6 +14,7 @@ def client():
     """Create test client with temporary upload directory."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Override upload directory for tests
+        # Note: detect module accesses upload_module.UPLOAD_DIR dynamically
         original_dir = upload_module.UPLOAD_DIR
         upload_module.UPLOAD_DIR = Path(tmp_dir)
 
@@ -451,3 +453,13 @@ def sample_png() -> bytes:
             0x82,
         ]
     )
+
+
+@pytest.fixture
+def uploaded_jpeg(client, sample_jpeg):
+    """Upload a sample JPEG and return the uuid."""
+    response = client.post(
+        "/api/upload",
+        files={"file": ("test.jpg", io.BytesIO(sample_jpeg), "image/jpeg")},
+    )
+    return response.json()["uuid"]
