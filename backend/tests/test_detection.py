@@ -55,3 +55,58 @@ def test_detect_panel_bbox_is_normalized(client, uploaded_jpeg):
         assert 0 <= y <= 1, f"y={y} not in [0,1]"
         assert 0 <= w <= 1, f"w={w} not in [0,1]"
         assert 0 <= h <= 1, f"h={h} not in [0,1]"
+
+
+# Reading order tests (Phase 3)
+
+
+def test_detect_returns_direction_field(client, uploaded_jpeg):
+    """Test that response includes direction field."""
+    response = client.post(f"/api/detect/{uploaded_jpeg}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "direction" in data
+    assert data["direction"] in ["ltr", "rtl"]
+
+
+def test_detect_returns_ambiguous_field(client, uploaded_jpeg):
+    """Test that response includes ambiguous field."""
+    response = client.post(f"/api/detect/{uploaded_jpeg}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "ambiguous" in data
+    assert isinstance(data["ambiguous"], bool)
+
+
+def test_detect_direction_parameter_ltr(client, uploaded_jpeg):
+    """Test that direction=ltr parameter is accepted and reflected in response."""
+    response = client.post(f"/api/detect/{uploaded_jpeg}?direction=ltr")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["direction"] == "ltr"
+
+
+def test_detect_direction_parameter_rtl(client, uploaded_jpeg):
+    """Test that direction=rtl parameter is accepted and reflected in response."""
+    response = client.post(f"/api/detect/{uploaded_jpeg}?direction=rtl")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["direction"] == "rtl"
+
+
+def test_detect_manga_defaults_to_rtl(client, uploaded_jpeg):
+    """Test that manga content type defaults to RTL direction per D-01."""
+    response = client.post(f"/api/detect/{uploaded_jpeg}?model_hint=manga")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["content_type"] == "manga"
+    assert data["direction"] == "rtl"
+
+
+def test_detect_western_defaults_to_ltr(client, uploaded_jpeg):
+    """Test that western content type defaults to LTR direction per D-01."""
+    response = client.post(f"/api/detect/{uploaded_jpeg}?model_hint=western")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["content_type"] == "western"
+    assert data["direction"] == "ltr"
