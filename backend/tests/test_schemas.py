@@ -35,28 +35,48 @@ class TestDetectionResponseSchema:
     """Tests for DetectionResponse schema."""
 
     def test_detection_response_with_panels(self):
-        """DetectionResponse accepts panels list and content_type."""
+        """DetectionResponse accepts panels list, content_type, and direction."""
         panels = [
             Panel(id=1, bbox=(0.1, 0.1, 0.4, 0.4), confidence=0.9),
             Panel(id=2, bbox=(0.5, 0.1, 0.4, 0.4), confidence=0.85),
         ]
-        response = DetectionResponse(panels=panels, content_type="manga")
+        response = DetectionResponse(panels=panels, content_type="manga", direction="rtl")
         assert len(response.panels) == 2
         assert response.content_type == "manga"
+        assert response.direction == "rtl"
+        assert response.ambiguous is False  # default value
 
     def test_detection_response_empty_panels(self):
         """DetectionResponse accepts empty panels list."""
-        response = DetectionResponse(panels=[], content_type="western")
+        response = DetectionResponse(panels=[], content_type="western", direction="ltr")
         assert response.panels == []
         assert response.content_type == "western"
+        assert response.direction == "ltr"
 
     def test_detection_response_content_type_literal(self):
         """DetectionResponse content_type must be manga, western, or unknown."""
         # Valid values
-        DetectionResponse(panels=[], content_type="manga")
-        DetectionResponse(panels=[], content_type="western")
-        DetectionResponse(panels=[], content_type="unknown")
+        DetectionResponse(panels=[], content_type="manga", direction="rtl")
+        DetectionResponse(panels=[], content_type="western", direction="ltr")
+        DetectionResponse(panels=[], content_type="unknown", direction="ltr")
 
         # Invalid value should raise ValidationError
         with pytest.raises(ValidationError):
-            DetectionResponse(panels=[], content_type="invalid")
+            DetectionResponse(panels=[], content_type="invalid", direction="ltr")
+
+    def test_detection_response_direction_literal(self):
+        """DetectionResponse direction must be ltr or rtl."""
+        # Valid values
+        DetectionResponse(panels=[], content_type="manga", direction="ltr")
+        DetectionResponse(panels=[], content_type="manga", direction="rtl")
+
+        # Invalid value should raise ValidationError
+        with pytest.raises(ValidationError):
+            DetectionResponse(panels=[], content_type="manga", direction="invalid")
+
+    def test_detection_response_ambiguous_field(self):
+        """DetectionResponse includes ambiguous boolean field."""
+        response = DetectionResponse(
+            panels=[], content_type="manga", direction="rtl", ambiguous=True
+        )
+        assert response.ambiguous is True

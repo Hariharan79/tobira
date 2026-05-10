@@ -3,14 +3,17 @@ Detection service: Panel detection using YOLO models.
 
 Implements auto-detection heuristic for manga vs Western comics
 and provides normalized bounding box coordinates.
+Integrates reading order inference per ORD-01.
 """
 
 from pathlib import Path
+from typing import Literal
 
 from PIL import Image, ImageStat
 
 from app.models.schemas import DetectionResponse, Panel
 from app.services.model_manager import ModelManager
+from app.services.reading_order import detect_ambiguity, infer_order
 
 
 def detect_content_type(image_path: Path) -> str:
@@ -52,16 +55,21 @@ def detect_content_type(image_path: Path) -> str:
             return "western"
 
 
-def detect_panels(image_path: Path, model_hint: str | None = None) -> DetectionResponse:
+def detect_panels(
+    image_path: Path,
+    model_hint: str | None = None,
+    direction: Literal["ltr", "rtl"] | None = None,
+) -> DetectionResponse:
     """
-    Detect panels in a comic page.
+    Detect panels in a comic page with reading order inference.
 
     Args:
         image_path: Path to the image file
         model_hint: Optional hint ("manga" or "western") to override auto-detection
+        direction: Reading direction ("ltr" or "rtl"). Auto-detected from content_type if None.
 
     Returns:
-        DetectionResponse with panels and detected content type
+        DetectionResponse with panels in reading order, content type, direction, and ambiguity flag
     """
     # Auto-detect content type if no hint provided (per D-02)
     content_type = model_hint if model_hint in ("manga", "western") else detect_content_type(image_path)
@@ -109,11 +117,20 @@ def detect_panels(image_path: Path, model_hint: str | None = None) -> DetectionR
                 )
             )
 
-    # Sort by confidence descending
-    panels.sort(key=lambda p: p.confidence, reverse=True)
+    # Determine effective direction: use provided or auto-detect from content_type per D-01
+    effective_direction: Literal["ltr", "rtl"] = direction if direction else (
+        "rtl" if content_type == "manga" else "ltr"
+    )
 
-    # Re-number after sorting
-    for i, panel in enumerate(panels):
-        panel.id = i + 1
+    # Apply reading order per ORD-01 (replaces confidence-based sorting)
+    ordered_panels = infer_order(panels, effective_direction)
 
-    return DetectionResponse(panels=panels, content_type=content_type)
+    # Detect ambiguous layouts per D-12
+    is_ambiguous = detect_ambiguity(panels)
+
+    return DetectionResponse(
+        panels=ordered_panels,
+        content_type=content_type,
+        direction=effective_direction,
+        ambiguous=is_ambiguous,
+    )
