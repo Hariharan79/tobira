@@ -7,11 +7,12 @@ import { ImageDisplay } from "@/components/image-display";
 import { useUploadPersistence } from "@/lib/hooks/use-persistence";
 import { useDetection } from "@/lib/hooks/use-detection";
 import { getImageUrl, type UploadResponse } from "@/lib/api";
+import type { ReadingDirection } from "@/lib/types";
 
 export default function Home() {
   const { lastUpload, saveUpload, clearUpload, isLoaded } = useUploadPersistence();
   const [currentImage, setCurrentImage] = useState<{ uuid: string; url: string } | null>(null);
-  const { isDetecting, panels, detect, reset } = useDetection();
+  const { isDetecting, panels, contentType, direction, ambiguous, detect, reset } = useDetection();
 
   // Memoize detect to avoid triggering useEffect dependency warnings
   const runDetection = useCallback(
@@ -63,6 +64,17 @@ export default function Home() {
     });
   };
 
+  // Handle direction toggle - re-fetch with new direction per D-05
+  const handleDirectionChange = useCallback(
+    (newDirection: ReadingDirection) => {
+      if (currentImage) {
+        // Re-fetch with new direction per D-05
+        detect(currentImage.uuid, { direction: newDirection });
+      }
+    },
+    [currentImage, detect]
+  );
+
   // Don't render until persistence is loaded to avoid hydration mismatch
   if (!isLoaded) {
     return (
@@ -82,6 +94,10 @@ export default function Home() {
           isDetecting={isDetecting}
           onRedetect={handleRedetect}
           onStartReading={handleStartReading}
+          contentType={contentType}
+          direction={direction}
+          ambiguous={ambiguous}
+          onDirectionChange={handleDirectionChange}
         />
       ) : (
         <DropZone onUploadSuccess={handleUploadSuccess} />
