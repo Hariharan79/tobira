@@ -27,3 +27,5 @@ class DetectionResponse(BaseModel):
 
     panels: list[Panel]
     content_type: Literal["manga", "western", "unknown"]
+    direction: Literal["ltr", "rtl"]  # Reading direction applied per ORD-01
+    ambiguous: bool = False  # True if layout is ambiguous per D-12
