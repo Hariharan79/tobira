@@ -4,7 +4,9 @@ import { RefreshCw, Play, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PanelOverlay } from "./panel-overlay";
 import { ScanningAnimation } from "./scanning-animation";
-import type { Panel } from "@/lib/types";
+import { DirectionToggle } from "./direction-toggle";
+import { AmbiguityBanner } from "./ambiguity-banner";
+import type { Panel, ReadingDirection } from "@/lib/types";
 
 interface ImageDisplayProps {
   src: string;
@@ -18,6 +20,14 @@ interface ImageDisplayProps {
   onRedetect?: () => void;
   /** Callback when start reading button clicked (Phase 4) */
   onStartReading?: () => void;
+  /** Content type from detection (Phase 3) */
+  contentType?: "manga" | "western" | "unknown" | null;
+  /** Reading direction from detection (Phase 3) */
+  direction?: ReadingDirection | null;
+  /** Whether layout is ambiguous (Phase 3) */
+  ambiguous?: boolean;
+  /** Callback when direction toggle clicked (Phase 3) */
+  onDirectionChange?: (direction: ReadingDirection) => void;
 }
 
 export function ImageDisplay({
@@ -28,6 +38,10 @@ export function ImageDisplay({
   isDetecting = false,
   onRedetect,
   onStartReading,
+  contentType,
+  direction,
+  ambiguous = false,
+  onDirectionChange,
 }: ImageDisplayProps) {
   const hasDetectedPanels = panels && panels.length > 0;
 
@@ -62,9 +76,36 @@ export function ImageDisplay({
         {/* Scanning animation during detection (per D-06) */}
         {isDetecting && <ScanningAnimation />}
 
-        {/* Panel overlays when detection complete (per D-04) */}
-        {!isDetecting && panels && <PanelOverlay panels={panels} />}
+        {/* Panel overlays when detection complete (per D-04, D-08) */}
+        {!isDetecting && panels && (
+          <PanelOverlay panels={panels} direction={direction || "ltr"} />
+        )}
       </div>
+
+      {/* Content type badge with direction per D-04, D-07 */}
+      {!isDetecting && contentType && contentType !== "unknown" && (
+        <div className="mt-3 flex items-center justify-center gap-3">
+          {/* Content type badge showing direction per D-04 */}
+          <span className="text-sm font-medium text-muted-foreground">
+            {contentType === "manga" ? "Manga" : "Western"} (
+            {direction?.toUpperCase() || "..."})
+          </span>
+
+          {/* Direction toggle per D-06, D-07 */}
+          {direction && onDirectionChange && (
+            <DirectionToggle
+              direction={direction}
+              onChange={onDirectionChange}
+              disabled={isDetecting}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Ambiguity warning banner per D-12, D-13 */}
+      {!isDetecting && ambiguous && (
+        <AmbiguityBanner className="mt-3 w-full max-w-md mx-auto" />
+      )}
 
       {/* Action buttons below image */}
       {!isDetecting && (
