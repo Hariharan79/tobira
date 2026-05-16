@@ -30,6 +30,13 @@ interface ImageDisplayProps {
   onRedetect?: () => void;
   onStartReading?: () => void;
   /**
+   * Apply a manual reading order (array of panel ids, in order) or null to
+   * revert to the inferred order. Session-only (per D-16). Owned by parent.
+   */
+  onReorder?: (orderedIds: number[] | null) => void;
+  /** Whether a manual order is currently applied (for the action bar badge) */
+  isReordered?: boolean;
+  /**
    * Optional controlled direction. When omitted, the component manages
    * direction internally based on contentType.
    */
@@ -55,9 +62,39 @@ export function ImageDisplay({
   onClear,
   onRedetect,
   onStartReading,
+  onReorder,
+  isReordered = false,
   direction: directionProp,
   onDirectionChange,
 }: ImageDisplayProps) {
+  // Manual reorder (per D-13–D-16). reorderMode is a transient UI state;
+  // tapSeq is the panel-id order the user has tapped so far.
+  const [reorderMode, setReorderMode] = useState(false);
+  const [tapSeq, setTapSeq] = useState<number[]>([]);
+
+  const enterReorder = () => {
+    setTapSeq([]);
+    setReorderMode(true);
+  };
+
+  const handlePanelTap = (panel: Panel) => {
+    setTapSeq((seq) => (seq.includes(panel.id) ? seq : [...seq, panel.id]));
+  };
+
+  const finishReorder = () => {
+    setReorderMode(false);
+    if (!panels || tapSeq.length === 0) return;
+    // Any panels the user didn't tap keep their existing relative order
+    // appended after the explicitly-tapped ones — always a complete order.
+    const rest = panels.map((p) => p.id).filter((id) => !tapSeq.includes(id));
+    onReorder?.([...tapSeq, ...rest]);
+  };
+
+  const resetInferred = () => {
+    setReorderMode(false);
+    setTapSeq([]);
+    onReorder?.(null);
+  };
   const autoDirection: ReadingDirection = useMemo(
     () => (contentType === "manga" ? "rtl" : "ltr"),
     [contentType]
@@ -112,8 +149,17 @@ export function ImageDisplay({
 
           {isDetecting && <ScanningAnimation />}
 
-          {/* Panel overlays with direction for animation key (per D-08) */}
-          {!isDetecting && hasPanels && <PanelOverlay panels={panels!} direction={direction} />}
+          {/* Panel overlays with direction for animation key (per D-08).
+              In reorder mode the badges become tap-in-order chips. */}
+          {!isDetecting && hasPanels && (
+            <PanelOverlay
+              panels={panels!}
+              direction={direction}
+              reorderMode={reorderMode}
+              reorderedSequence={reorderMode ? tapSeq : undefined}
+              onPanelClick={reorderMode ? handlePanelTap : undefined}
+            />
+          )}
 
           {showZeroState && (
             <div
@@ -149,8 +195,61 @@ export function ImageDisplay({
         <InlineNotice kind="warning" title="Detection failed" description={errorMessage} />
       )}
 
-      {/* Action bar — visible when not actively scanning */}
-      {!isDetecting && (
+      {/* Reorder controls replace the action bar while in reorder mode (D-15) */}
+      {!isDetecting && reorderMode && (
+        <div className="relative">
+          <div aria-hidden className="halftone-band h-3 w-full mb-3 opacity-90" />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p
+              className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
+              aria-live="polite"
+            >
+              {tapSeq.length === 0
+                ? "TAP PANELS IN READING ORDER"
+                : `${tapSeq.length}/${panels?.length ?? 0} ASSIGNED`}
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={resetInferred}
+                aria-label="Reset to inferred order"
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 h-9",
+                  "font-mono text-xs font-bold uppercase tracking-widest",
+                  "border-2 border-foreground bg-background text-foreground",
+                  "offset-shadow-sm transition-transform duration-100",
+                  "hover:-translate-x-px hover:-translate-y-px",
+                  "active:translate-x-0 active:translate-y-0 active:shadow-none",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                )}
+              >
+                Reset to inferred
+              </button>
+              <button
+                type="button"
+                onClick={finishReorder}
+                disabled={tapSeq.length === 0}
+                aria-label="Done reordering"
+                className={cn(
+                  "inline-flex items-center gap-2 px-4 h-9",
+                  "font-mono text-xs font-bold uppercase tracking-widest",
+                  "border-2 border-foreground bg-foreground text-background",
+                  "offset-shadow-md transition-transform duration-100",
+                  "hover:-translate-x-px hover:-translate-y-px",
+                  "active:translate-x-0 active:translate-y-0 active:shadow-none",
+                  "disabled:opacity-40 disabled:pointer-events-none",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                )}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action bar — visible when not actively scanning and not reordering */}
+      {!isDetecting && !reorderMode && (
         <ActionBar
           panelCount={panels?.length ?? null}
           contentType={contentType}
@@ -159,6 +258,8 @@ export function ImageDisplay({
           onDirectionChange={handleDirectionChange}
           onRedetect={onRedetect}
           onStartReading={onStartReading}
+          onReorder={onReorder ? enterReorder : undefined}
+          isReordered={isReordered}
           hasPanels={hasPanels}
         />
       )}

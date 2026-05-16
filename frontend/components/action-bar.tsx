@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, RefreshCw } from "lucide-react";
+import { Play, RefreshCw, ListOrdered } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DirectionToggle, type ReadingDirection } from "./direction-toggle";
 
@@ -12,6 +12,10 @@ interface ActionBarProps {
   onDirectionChange: (next: ReadingDirection) => void;
   onRedetect?: () => void;
   onStartReading?: () => void;
+  /** Enter manual reorder mode (per D-13) */
+  onReorder?: () => void;
+  /** Whether a manual order is currently applied (badge the button) */
+  isReordered?: boolean;
   /** Hide the Start Reading CTA when zero panels detected */
   hasPanels: boolean;
   className?: string;
@@ -25,6 +29,8 @@ export function ActionBar({
   onDirectionChange,
   onRedetect,
   onStartReading,
+  onReorder,
+  isReordered = false,
   hasPanels,
   className,
 }: ActionBarProps) {
@@ -55,6 +61,13 @@ export function ActionBar({
             <GhostButton onClick={onRedetect} ariaLabel="Redetect panels">
               <RefreshCw className="h-3.5 w-3.5" strokeWidth={2.5} />
               <span>Redetect</span>
+            </GhostButton>
+          )}
+
+          {hasPanels && onReorder && (
+            <GhostButton onClick={onReorder} ariaLabel="Manually reorder panels">
+              <ListOrdered className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <span>{isReordered ? "Reorder ✓" : "Reorder"}</span>
             </GhostButton>
           )}
 

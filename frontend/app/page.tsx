@@ -40,6 +40,8 @@ export default function Home() {
   const [readerOpen, setReaderOpen] = useState(false);
   const [readerStartIndex, setReaderStartIndex] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  // Manual reading order (panel ids in order) or null = inferred. Session-only (D-16).
+  const [reorderedIds, setReorderedIds] = useState<number[] | null>(null);
   const { getPanelFromHash, setPanelHash, clearPanelHash } = usePanelHash();
   const { shouldShowOnboarding, markOnboardingSeen } = useReaderOnboarding();
 
@@ -79,6 +81,7 @@ export default function Home() {
     setCurrentImage({ uuid: data.uuid, url });
     saveUpload({ uuid: data.uuid, url });
     setUserDirection(null);
+    setReorderedIds(null); // fresh page → inferred order
     detect(data.uuid);
   };
 
@@ -87,11 +90,19 @@ export default function Home() {
     clearUpload();
     reset();
     setUserDirection(null);
+    setReorderedIds(null);
   };
 
   const handleRedetect = () => {
-    if (currentImage) detect(currentImage.uuid);
+    if (currentImage) {
+      setReorderedIds(null); // re-detection invalidates a manual order
+      detect(currentImage.uuid);
+    }
   };
+
+  const handleReorder = useCallback((ids: number[] | null) => {
+    setReorderedIds(ids);
+  }, []);
 
   const handleStartReading = useCallback(() => {
     if (!panels || panels.length === 0) {
@@ -145,13 +156,25 @@ export default function Home() {
     [currentImage, detect]
   );
 
+  // Effective panel order: manual reorder (if applied) overrides inferred.
+  const orderedPanels = useMemo(() => {
+    if (!panels) return panels;
+    if (!reorderedIds) return panels;
+    const byId = new Map(panels.map((p) => [p.id, p]));
+    const reordered = reorderedIds
+      .map((id) => byId.get(id))
+      .filter((p): p is NonNullable<typeof p> => p != null);
+    // Fall back to inferred if the saved order is stale (panel set changed)
+    return reordered.length === panels.length ? reordered : panels;
+  }, [panels, reorderedIds]);
+
   // Reader page data (memoized — stable identity for ReaderShell props)
   const readerPage = useMemo(
     () =>
-      currentImage && panels && panels.length > 0
-        ? createReaderPage(currentImage.uuid, currentImage.url, panels, "Comic Page")
+      currentImage && orderedPanels && orderedPanels.length > 0
+        ? createReaderPage(currentImage.uuid, currentImage.url, orderedPanels, "Comic Page")
         : null,
-    [currentImage, panels]
+    [currentImage, orderedPanels]
   );
 
   return (
@@ -166,7 +189,7 @@ export default function Home() {
         ) : currentImage ? (
           <ImageDisplay
             src={currentImage.url}
-            panels={panels}
+            panels={orderedPanels}
             isDetecting={isDetecting}
             contentType={contentType}
             errorMessage={error}
@@ -176,6 +199,8 @@ export default function Home() {
             onClear={handleClear}
             onRedetect={handleRedetect}
             onStartReading={handleStartReading}
+            onReorder={handleReorder}
+            isReordered={reorderedIds != null}
           />
         ) : (
           <Landing onUploadSuccess={handleUploadSuccess} />
