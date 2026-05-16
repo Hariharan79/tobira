@@ -1,162 +1,166 @@
 "use client";
 
-import { RefreshCw, Play, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Panel, ReadingDirection } from "@/lib/types";
 import { PanelOverlay } from "./panel-overlay";
 import { ScanningAnimation } from "./scanning-animation";
-import { DirectionToggle } from "./direction-toggle";
-import { AmbiguityBanner } from "./ambiguity-banner";
-import type { Panel, ReadingDirection } from "@/lib/types";
+import { ActionBar } from "./action-bar";
+import { InlineNotice } from "./inline-notice";
+
+export type PageViewState = "detecting" | "detected" | "ambiguous" | "zero-panels" | "error";
 
 interface ImageDisplayProps {
   src: string;
   alt?: string;
-  onClear?: () => void;
-  /** Detected panels to overlay (null = not yet detected) */
+  /** Panels from detection. null = not yet attempted. */
   panels?: Panel[] | null;
-  /** Whether detection is in progress */
   isDetecting?: boolean;
-  /** Callback when redetect button clicked */
-  onRedetect?: () => void;
-  /** Callback when start reading button clicked (Phase 4) */
-  onStartReading?: () => void;
-  /** Content type from detection (Phase 3) */
+  /**
+   * Indicates the layout produced low-confidence reading order. When true,
+   * the ambiguous-layout banner is shown above the action bar.
+   */
+  isAmbiguous?: boolean;
+  /** Detection error message. When set, shows the error banner + retry. */
+  errorMessage?: string | null;
+  /** Auto-derived from content_type. user can override via DirectionToggle. */
   contentType?: "manga" | "western" | "unknown" | null;
-  /** Reading direction from detection (Phase 3) */
-  direction?: ReadingDirection | null;
-  /** Whether layout is ambiguous (Phase 3) */
-  ambiguous?: boolean;
-  /** Callback when direction toggle clicked (Phase 3) */
-  onDirectionChange?: (direction: ReadingDirection) => void;
+  onClear?: () => void;
+  onRedetect?: () => void;
+  onStartReading?: () => void;
+  /**
+   * Optional controlled direction. When omitted, the component manages
+   * direction internally based on contentType.
+   */
+  direction?: ReadingDirection;
+  onDirectionChange?: (next: ReadingDirection) => void;
 }
 
+/**
+ * ImageDisplay — the Page View shell. Header on top, comic image in the
+ * middle (sitting directly on the background — no card chrome — so the
+ * artwork is the only visual element), action bar with halftone band below.
+ *
+ * Visual direction: Neo Manga / Indie Zine. See PRD §4.2.
+ */
 export function ImageDisplay({
   src,
   alt = "Uploaded comic page",
-  onClear,
   panels,
   isDetecting = false,
+  isAmbiguous = false,
+  errorMessage = null,
+  contentType = null,
+  onClear,
   onRedetect,
   onStartReading,
-  contentType,
-  direction,
-  ambiguous = false,
+  direction: directionProp,
   onDirectionChange,
 }: ImageDisplayProps) {
-  const hasDetectedPanels = panels && panels.length > 0;
+  const autoDirection: ReadingDirection = useMemo(
+    () => (contentType === "manga" ? "rtl" : "ltr"),
+    [contentType]
+  );
+
+  // Internal fallback so the component can render without a controlling parent.
+  const [internalDirection, setInternalDirection] = useState<ReadingDirection>(autoDirection);
+  const [isManualDirection, setIsManualDirection] = useState(false);
+
+  // Keep internal direction in sync with auto unless the user has overridden it.
+  useEffect(() => {
+    if (!isManualDirection) setInternalDirection(autoDirection);
+  }, [autoDirection, isManualDirection]);
+
+  const direction = directionProp ?? internalDirection;
+
+  const handleDirectionChange = (next: ReadingDirection) => {
+    setIsManualDirection(true);
+    setInternalDirection(next);
+    onDirectionChange?.(next);
+  };
+
+  const hasPanels = !!panels && panels.length > 0;
+  const showZeroState = !isDetecting && panels != null && panels.length === 0;
 
   return (
-    <div className="relative w-full max-w-4xl animate-in fade-in duration-300">
-      {/* Clear button */}
-      {onClear && (
-        <button
-          onClick={onClear}
-          className={cn(
-            "absolute -top-3 -right-3 z-20",
-            "flex items-center justify-center",
-            "w-8 h-8 rounded-full",
-            "bg-background border border-border shadow-md",
-            "hover:bg-muted transition-colors",
-            "focus:outline-none focus:ring-2 focus:ring-ring"
-          )}
-          aria-label="Clear image and upload another"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      )}
-
-      {/* Image container with relative positioning for overlays */}
-      <div className="relative rounded-lg overflow-hidden shadow-lg">
-        <img
-          src={src}
-          alt={alt}
-          className="w-full h-auto"
-        />
-
-        {/* Scanning animation during detection (per D-06) */}
-        {isDetecting && <ScanningAnimation />}
-
-        {/* Panel overlays when detection complete (per D-04, D-08) */}
-        {!isDetecting && panels && (
-          <PanelOverlay panels={panels} direction={direction || "ltr"} />
+    <div className="w-full max-w-5xl mx-auto flex flex-col gap-4">
+      <div className="relative">
+        {/* CLEAR (close) — sits as a small chip floating top-right of the image */}
+        {onClear && (
+          <button
+            onClick={onClear}
+            aria-label="Clear image and upload another"
+            className={cn(
+              "absolute top-2 right-2 z-20",
+              "inline-flex items-center justify-center h-8 w-8",
+              "border-2 border-foreground bg-background text-foreground",
+              "transition-transform duration-100",
+              "hover:-translate-x-px hover:-translate-y-px offset-shadow-sm",
+              "active:translate-x-0 active:translate-y-0 active:shadow-none",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            )}
+          >
+            <X className="h-4 w-4" strokeWidth={2.5} />
+          </button>
         )}
+
+        {/* Image — sits directly on the background, no card chrome (per PRD) */}
+        <div className="relative w-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={alt} className="block w-full h-auto" draggable={false} />
+
+          {isDetecting && <ScanningAnimation />}
+
+          {/* Panel overlays with direction for animation key (per D-08) */}
+          {!isDetecting && hasPanels && <PanelOverlay panels={panels!} direction={direction} />}
+
+          {showZeroState && (
+            <div
+              className={cn(
+                "absolute inset-0",
+                "flex items-center justify-center",
+                "bg-background/85"
+              )}
+            >
+              <div className="text-center max-w-xs px-6">
+                <p className="font-mono text-xs font-bold uppercase tracking-widest mb-2">
+                  No panels found
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Try Redetect, or drop a different page.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Content type badge with direction per D-04, D-07 */}
-      {!isDetecting && contentType && contentType !== "unknown" && (
-        <div className="mt-3 flex items-center justify-center gap-3">
-          {/* Content type badge showing direction per D-04 */}
-          <span className="text-sm font-medium text-muted-foreground">
-            {contentType === "manga" ? "Manga" : "Western"} (
-            {direction?.toUpperCase() || "..."})
-          </span>
-
-          {/* Direction toggle per D-06, D-07 */}
-          {direction && onDirectionChange && (
-            <DirectionToggle
-              direction={direction}
-              onChange={onDirectionChange}
-              disabled={isDetecting}
-            />
-          )}
-        </div>
+      {/* Banners — only rendered after detection completes */}
+      {!isDetecting && isAmbiguous && hasPanels && (
+        <InlineNotice
+          kind="warning"
+          title="Reading order may be ambiguous"
+          description="Try toggling LTR/RTL, or reorder panels manually."
+        />
       )}
 
-      {/* Ambiguity warning banner per D-12, D-13 */}
-      {!isDetecting && ambiguous && (
-        <AmbiguityBanner className="mt-3 w-full max-w-md mx-auto" />
+      {!isDetecting && errorMessage && (
+        <InlineNotice kind="warning" title="Detection failed" description={errorMessage} />
       )}
 
-      {/* Action buttons below image */}
+      {/* Action bar — visible when not actively scanning */}
       {!isDetecting && (
-        <div className="mt-4 flex items-center justify-center gap-3">
-          {/* Redetect button (per D-03: ROADMAP success criteria #5) */}
-          {onRedetect && (
-            <button
-              onClick={onRedetect}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2",
-                "text-sm font-medium",
-                "rounded-lg border border-border",
-                "bg-background hover:bg-muted",
-                "transition-colors",
-                "focus:outline-none focus:ring-2 focus:ring-ring"
-              )}
-              aria-label="Redetect panels"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Redetect
-            </button>
-          )}
-
-          {/* Start reading CTA (per D-04: prominent button) */}
-          {hasDetectedPanels && onStartReading && (
-            <button
-              onClick={onStartReading}
-              className={cn(
-                "flex items-center gap-2 px-6 py-2",
-                "text-sm font-medium",
-                "rounded-lg",
-                "bg-primary text-primary-foreground",
-                "hover:bg-primary/90",
-                "transition-colors",
-                "shadow-md",
-                "focus:outline-none focus:ring-2 focus:ring-ring"
-              )}
-              aria-label="Start reading panels"
-            >
-              <Play className="h-4 w-4" />
-              Start Reading
-            </button>
-          )}
-
-          {/* No panels message */}
-          {panels && panels.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No panels detected. Try a different image or use Redetect.
-            </p>
-          )}
-        </div>
+        <ActionBar
+          panelCount={panels?.length ?? null}
+          contentType={contentType}
+          direction={direction}
+          isAutoDirection={!isManualDirection}
+          onDirectionChange={handleDirectionChange}
+          onRedetect={onRedetect}
+          onStartReading={onStartReading}
+          hasPanels={hasPanels}
+        />
       )}
     </div>
   );

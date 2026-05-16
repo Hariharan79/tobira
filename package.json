@@ -2,7 +2,8 @@
   "name": "tobira",
   "private": true,
   "scripts": {
-    "dev": "pnpm -C frontend dev",
+    "dev": "bash scripts/dev-clean.sh && pnpm -C frontend dev",
+    "dev:clean": "bash scripts/dev-clean.sh",
     "build": "pnpm -C frontend build",
     "lint": "pnpm -C frontend lint",
     "test": "pnpm -C frontend test",
@@ -15,11 +16,7 @@
     "prettier": "^3.8.3"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,yaml,yml}": [
+    "*.{ts,tsx,js,jsx,json,md,yaml,yml}": [
       "prettier --write"
     ]
   }

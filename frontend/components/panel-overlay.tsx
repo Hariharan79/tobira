@@ -1,39 +1,60 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { Panel } from "@/lib/types";
+import type { Panel, ReadingDirection } from "@/lib/types";
 
 interface PanelOverlayProps {
   panels: Panel[];
-  direction?: "ltr" | "rtl";  // For animation key per D-08
+  /** For animation key per D-08 - remount badges on direction change */
+  direction?: ReadingDirection;
+  /**
+   * Reorder mode (Phase 4 territory). When true, the badges become
+   * tap-in-order chips and click handler fires per panel.
+   */
+  reorderMode?: boolean;
+  /** Manually-assigned order for each panel.id when reorderMode is true */
+  reorderedSequence?: number[];
+  onPanelClick?: (panel: Panel) => void;
+  /** Stagger reveal delay between badges, ms. Set 0 to skip animation. */
+  staggerMs?: number;
   className?: string;
 }
 
 /**
- * PanelOverlay: Renders panel bounding boxes over an image.
- *
- * Uses CSS absolute positioning with percentage-based coordinates
- * for responsive scaling (per D-04: minimal overlay visualization).
- *
- * Must be used inside a relative-positioned container that wraps the image.
+ * PanelOverlay — Neo Manga / Indie Zine. Square chip badges with a 2px black
+ * border and an offset shadow. The badge sits in the top-left of each panel
+ * with a small white backplate so it stays legible against any artwork (the
+ * #1 a11y constraint named in the PRD §8).
  */
 export function PanelOverlay({
   panels,
   direction = "ltr",
+  reorderMode = false,
+  reorderedSequence,
+  onPanelClick,
+  staggerMs = 60,
   className,
 }: PanelOverlayProps) {
   return (
-    <div className={cn("absolute inset-0 pointer-events-none", className)}>
-      {panels.map((panel) => {
+    <div className={cn("absolute inset-0", className)}>
+      {panels.map((panel, idx) => {
         const [x, y, w, h] = panel.bbox;
+        const sequenceNumber =
+          reorderMode && reorderedSequence ? reorderedSequence.indexOf(panel.id) + 1 : panel.id;
+        const isAssigned = !reorderMode || (reorderedSequence?.indexOf(panel.id) ?? -1) >= 0;
+
         return (
           <div
             key={panel.id}
             className={cn(
               "absolute",
-              "border-2 border-primary/70",
-              "rounded-sm",
-              "transition-all duration-200"
+              "border-2 border-foreground",
+              // monochrome wash — extremely subtle so artwork stays readable
+              "bg-foreground/[0.04]",
+              "transition-[background-color,border-color] duration-150",
+              // hover deepens the border so the panel reads as "selectable"
+              reorderMode && "hover:bg-foreground/[0.10] cursor-pointer pointer-events-auto",
+              !reorderMode && "pointer-events-none"
             )}
             style={{
               left: `${x * 100}%`,
@@ -41,29 +62,63 @@ export function PanelOverlay({
               width: `${w * 100}%`,
               height: `${h * 100}%`,
             }}
+            onClick={reorderMode && onPanelClick ? () => onPanelClick(panel) : undefined}
+            role={reorderMode ? "button" : undefined}
+            aria-label={
+              reorderMode
+                ? `Panel ${panel.id}, ${
+                    isAssigned ? `assigned position ${sequenceNumber}` : "unassigned"
+                  }`
+                : `Panel ${panel.id}`
+            }
           >
-            {/* Numbered badge at top-left corner (per D-04) */}
             {/* Key includes direction to force remount on toggle (per D-08) */}
-            <span
+            <Badge
               key={`badge-${panel.id}-${direction}`}
-              className={cn(
-                "absolute -top-3 -left-3",
-                "w-6 h-6 rounded-full",
-                "bg-primary text-primary-foreground",
-                "text-xs font-bold",
-                "flex items-center justify-center",
-                "shadow-md",
-                "pointer-events-auto cursor-default",
-                // Animation on mount (triggered by key change) per D-08
-                "animate-in fade-in zoom-in-95 duration-200"
-              )}
-              title={`Panel ${panel.id} (${Math.round(panel.confidence * 100)}% confidence)`}
-            >
-              {panel.id}
-            </span>
+              number={isAssigned ? sequenceNumber : null}
+              confidence={panel.confidence}
+              isReorder={reorderMode}
+              animationDelay={staggerMs > 0 ? idx * staggerMs : 0}
+            />
           </div>
         );
       })}
     </div>
+  );
+}
+
+function Badge({
+  number,
+  confidence,
+  isReorder,
+  animationDelay,
+}: {
+  number: number | null;
+  confidence: number;
+  isReorder: boolean;
+  animationDelay: number;
+}) {
+  return (
+    <span
+      title={`Confidence ${Math.round(confidence * 100)}%`}
+      className={cn(
+        // square chip, 30px-ish, sits half outside the panel for visual punch
+        "absolute -top-[14px] -left-[14px]",
+        "inline-flex items-center justify-center",
+        "h-[30px] w-[30px]",
+        "border-2 border-foreground",
+        "bg-foreground text-background",
+        "font-mono font-bold tabular-nums text-[13px] leading-none",
+        "offset-shadow-sm",
+        // entrance: pop in with a small overshoot
+        "[animation:badge-pop_360ms_cubic-bezier(0.2,0.8,0.2,1)_both]",
+        isReorder &&
+          number === null &&
+          "bg-background text-foreground [animation:pulse-mark_1400ms_ease-in-out_infinite]"
+      )}
+      style={{ animationDelay: `${animationDelay}ms` }}
+    >
+      {number ?? "·"}
+    </span>
   );
 }
