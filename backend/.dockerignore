@@ -1,0 +1,30 @@
+# Python virtual environment (never include in image)
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tests (not needed at runtime)
+tests/
+
+# Git history
+.git/
+.gitignore
+
+# Development and editor files
+.env
+.env.*
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# NOTE: models/ is intentionally NOT excluded here.
+# Model weights (backend/models/best.pt, manga_panel_detector_fp32.pt) are
+# baked into the image via COPY . . (Dockerfile:15) to ensure deterministic
+# cold starts on Railway — no runtime HuggingFace download required.
+# Decision: bake-into-image (05-01 Task 2 checkpoint, 2026-05-16).
+# See .planning/phases/05-multi-page-support-polish-v1-ship/05-01-SUMMARY.md
