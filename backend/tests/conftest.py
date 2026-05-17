@@ -1,5 +1,6 @@
 import io
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -463,3 +464,33 @@ def uploaded_jpeg(client, sample_jpeg):
         files={"file": ("test.jpg", io.BytesIO(sample_jpeg), "image/jpeg")},
     )
     return response.json()["uuid"]
+
+
+@pytest.fixture
+def sample_cbz(sample_jpeg, sample_png) -> bytes:
+    """Create a minimal valid CBZ in memory with filenames that prove natural sort.
+
+    Filenames: page2.jpg, page10.jpg, page1.jpg — naive lexicographic order differs
+    from natural order (page1 < page2 < page10), which is what archive.extract_cbz
+    must produce.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        # Intentionally out of lex order: "page10" < "page1" < "page2" lexicographically
+        zf.writestr("page2.jpg", sample_jpeg)
+        zf.writestr("page10.jpg", sample_jpeg)
+        zf.writestr("page1.jpg", sample_png)
+    return buf.getvalue()
+
+
+@pytest.fixture
+def sample_cbz_zip_slip() -> bytes:
+    """Create a ZIP containing a path-traversal payload (zip-slip attack vector).
+
+    The single entry uses '../evil.jpg' as its name. archive.extract_cbz must
+    reject this with a ValueError before writing any bytes to disk.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("../evil.jpg", b"\xff\xd8\xff\xe0fake")
+    return buf.getvalue()
