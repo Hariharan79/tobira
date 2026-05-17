@@ -147,6 +147,47 @@ body {
   }
 }
 
+/* Phase 5 chapter keyframes — ported verbatim from the locked design shell
+   (design-output/"Phase 5 Chapter Reader.html"). Additive only. */
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translate(2px, 2px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes driftHalftone {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 40px 40px;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
