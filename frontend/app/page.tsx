@@ -3,15 +3,35 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/site-header";
-import { DropZone } from "@/components/drop-zone";
 import { ImageDisplay } from "@/components/image-display";
 import { ReaderShell, createReaderPage } from "@/components/reader";
+import {
+  ChapterReaderShell,
+  type ChapterReaderPageInput,
+} from "@/components/reader/chapter-reader-shell";
+import { Landing } from "@/components/landing";
+import { PageProcessing } from "@/components/chapter/page-processing";
 import { useUploadPersistence } from "@/lib/hooks/use-persistence";
 import { useDetection } from "@/lib/hooks/use-detection";
 import { usePanelHash } from "@/lib/hooks/use-panel-hash";
 import { useReaderOnboarding } from "@/lib/hooks/use-reader-onboarding";
-import { getImageUrl, type UploadResponse } from "@/lib/api";
-import type { ReadingDirection } from "@/lib/types";
+import { useChapterPersistence } from "@/lib/hooks/use-chapter-persistence";
+import { useChapterDetection } from "@/lib/hooks/use-chapter-detection";
+import {
+  resolveDeepLinkIntent,
+  getPositionFromHash,
+  commitPosition,
+  stripPositionHash,
+  type DeepLinkIntent,
+} from "@/lib/hooks/use-deep-link-guard";
+import {
+  getImageUrl,
+  getChapterPageImageUrl,
+  getChapterStatus,
+  getChapterPagePanels,
+  type UploadResponse,
+} from "@/lib/api";
+import type { ChapterUploadResponse, ReadingDirection } from "@/lib/types";
 
 export default function Home() {
   const { lastUpload, saveUpload, clearUpload, isLoaded } = useUploadPersistence();
@@ -51,6 +71,178 @@ export default function Home() {
     },
     [detect]
   );
+
+  // ── Chapter mode — a PARALLEL state tree (D-03). It does NOT reuse or
+  // unify the single-image useUploadPersistence/useDetection/currentImage
+  // state above; the single-image path stays behaviorally unchanged. ──
+  const {
+    lastChapter,
+    saveChapter,
+    clearChapter,
+    isLoaded: chapterLoaded,
+  } = useChapterPersistence();
+  const [currentChapter, setCurrentChapter] = useState<{
+    comicUuid: string;
+    pageCount: number;
+  } | null>(null);
+  const chapterDetection = useChapterDetection(
+    currentChapter?.comicUuid ?? null,
+    currentChapter?.pageCount ?? 0
+  );
+  const [chapterReaderOpen, setChapterReaderOpen] = useState(false);
+  const [chapterPages, setChapterPages] = useState<ChapterReaderPageInput[]>([]);
+  const [chapterStart, setChapterStart] = useState({ page: 0, panel: 0 });
+
+  const [deepLinkIntent, setDeepLinkIntent] = useState<DeepLinkIntent | null>(null);
+  const [deepLinkPos, setDeepLinkPos] = useState<{
+    page: number;
+    panel: number;
+  } | null>(null);
+
+  // Chapter restore-once (mirrors the single-image restoredRef guard).
+  const chapterRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!chapterLoaded || chapterRestoredRef.current) return;
+    chapterRestoredRef.current = true;
+    if (lastChapter) {
+      setCurrentChapter({
+        comicUuid: lastChapter.comicUuid,
+        pageCount: lastChapter.pageCount,
+      });
+    }
+  }, [chapterLoaded, lastChapter]);
+
+  // Stale-404 graceful degrade (Pitfall 3 / D-10 / D-15): the detection hook
+  // catches the 404 and surfaces `error` WITHOUT throwing to the console.
+  // Clear the stale chapter key and drop back to the upload entry.
+  useEffect(() => {
+    if (chapterDetection.error && currentChapter) {
+      clearChapter();
+      setCurrentChapter(null);
+      setChapterReaderOpen(false);
+      setChapterPages([]);
+    }
+  }, [chapterDetection.error, currentChapter, clearChapter]);
+
+  // Build the reader's per-page input from chapter status (panels + url).
+  useEffect(() => {
+    const uuid = currentChapter?.comicUuid;
+    if (!uuid) {
+      setChapterPages([]);
+      return;
+    }
+    let cancelled = false;
+    getChapterStatus(uuid)
+      .then((status) => {
+        if (cancelled) return;
+        setChapterPages(
+          status.pages.map((p) => ({
+            pageIndex: p.page,
+            pageUrl: getChapterPageImageUrl(uuid, p.page),
+            panels: p.status === "done" ? p.panels : null,
+          }))
+        );
+      })
+      .catch(() => {
+        /* 404 handled by the detection hook's error path (no console err) */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentChapter, chapterDetection.doneCount, chapterDetection.allDone]);
+
+  // D-09 catch-up: fetch a not-yet-detected page's panels on demand.
+  const handleRequestPage = useCallback(
+    (pageIndex: number) => {
+      const uuid = currentChapter?.comicUuid;
+      if (!uuid) return;
+      getChapterPagePanels(uuid, pageIndex)
+        .then((res) => {
+          if (res.status !== "done") return;
+          setChapterPages((prev) =>
+            prev.map((pg) => (pg.pageIndex === pageIndex ? { ...pg, panels: res.panels } : pg))
+          );
+        })
+        .catch(() => {
+          /* transient — the SSE/poll loop will deliver it */
+        });
+    },
+    [currentChapter]
+  );
+
+  const handleChapterSuccess = useCallback(
+    (data: ChapterUploadResponse) => {
+      setCurrentChapter({
+        comicUuid: data.comic_uuid,
+        pageCount: data.page_count,
+      });
+      saveChapter({
+        comicUuid: data.comic_uuid,
+        pageCount: data.page_count,
+      });
+      setChapterReaderOpen(false);
+    },
+    [saveChapter]
+  );
+
+  const handleChapterStart = useCallback(() => {
+    setChapterStart({ page: 0, panel: 0 });
+    setChapterReaderOpen(true);
+  }, []);
+
+  const handleChapterCancel = useCallback(() => {
+    clearChapter();
+    setCurrentChapter(null);
+    setChapterReaderOpen(false);
+    setChapterPages([]);
+    chapterDetection.reset();
+  }, [clearChapter, chapterDetection]);
+
+  const handleChapterClose = useCallback(() => {
+    setChapterReaderOpen(false);
+  }, []);
+
+  // Deep-link guard (D-17): replaces the deleted aggressive auto-open effect.
+  // Resolve once the chapter context is known: external/shared → auto-open
+  // at the hashed position; reload/internal → ResumeBanner on Landing (NOT
+  // auto-open); mismatch → strip the hash silently.
+  useEffect(() => {
+    if (typeof window === "undefined" || !currentChapter) return;
+    const intent = resolveDeepLinkIntent(window.location.hash, {
+      pageCount: currentChapter.pageCount,
+      comicUuid: currentChapter.comicUuid,
+    });
+    setDeepLinkIntent(intent);
+    if (intent === "strip") {
+      stripPositionHash();
+      setDeepLinkPos(null);
+    } else {
+      setDeepLinkPos(getPositionFromHash());
+    }
+  }, [currentChapter]);
+
+  const guardHandledRef = useRef(false);
+  useEffect(() => {
+    if (guardHandledRef.current) return;
+    if (!currentChapter || chapterPages.length === 0) return;
+    if (deepLinkIntent === "auto-open" && deepLinkPos) {
+      guardHandledRef.current = true;
+      setChapterStart(deepLinkPos);
+      setChapterReaderOpen(true);
+    }
+  }, [deepLinkIntent, deepLinkPos, currentChapter, chapterPages]);
+
+  const handleResume = useCallback(() => {
+    const pos = deepLinkPos ?? getPositionFromHash() ?? { page: 0, panel: 0 };
+    commitPosition(pos.page, pos.panel);
+    setChapterStart(pos);
+    setChapterReaderOpen(true);
+  }, [deepLinkPos]);
+
+  const handleResumeDismiss = useCallback(() => {
+    stripPositionHash();
+    setDeepLinkIntent("strip");
+  }, []);
 
   // Restore from localStorage exactly once after persistence hydrates.
   // Without the ref, saveUpload() inside handleUploadSuccess re-fires this
@@ -134,15 +326,10 @@ export default function Home() {
     [setPanelHash]
   );
 
-  // Deep link on load: auto-open reader if #panel=N in URL
-  useEffect(() => {
-    if (!isLoaded || !panels || panels.length === 0) return;
-    const hashIndex = getPanelFromHash();
-    if (hashIndex !== null && hashIndex < panels.length) {
-      setReaderStartIndex(hashIndex);
-      setReaderOpen(true);
-    }
-  }, [isLoaded, panels, getPanelFromHash]);
+  // D-17: the aggressive "auto-open the reader on every load from a stale
+  // #panel hash" effect that used to live here is intentionally REMOVED.
+  // Single-image deep-links still work via handleStartReading (button), and
+  // chapter deep-links go through the use-deep-link-guard rules above.
 
   // Handle direction toggle - re-fetch with new direction per D-05
   const handleDirectionChange = useCallback(
@@ -202,12 +389,21 @@ export default function Home() {
             onReorder={handleReorder}
             isReordered={reorderedIds != null}
           />
-        ) : (
-          <Landing onUploadSuccess={handleUploadSuccess} />
+        ) : currentChapter ? null : (
+          <Landing
+            onSingleSuccess={handleUploadSuccess}
+            onChapterSuccess={handleChapterSuccess}
+            showResume={deepLinkIntent === "show-resume"}
+            resumePageN={(deepLinkPos?.page ?? 0) + 1}
+            resumePanelN={(deepLinkPos?.panel ?? 0) + 1}
+            onResume={handleResume}
+            onResumeDismiss={handleResumeDismiss}
+            mobile={isMobile}
+          />
         )}
       </main>
 
-      {/* Panel-by-Panel Reader (full-viewport takeover) */}
+      {/* Single-image Panel-by-Panel Reader (full-viewport takeover) */}
       {readerOpen && readerPage && (
         <ReaderShell
           page={readerPage}
@@ -219,22 +415,37 @@ export default function Home() {
           showOnboarding={shouldShowOnboarding}
         />
       )}
-    </div>
-  );
-}
 
-function Landing({ onUploadSuccess }: { onUploadSuccess: (data: UploadResponse) => void }) {
-  return (
-    <div className="w-full max-w-2xl flex flex-col items-center gap-8 text-center">
-      <div className="space-y-3">
-        <h1 className="font-sans font-black tracking-tight text-4xl md:text-5xl leading-[1.05]">
-          Read comics one panel at a time.
-        </h1>
-        <p className="text-sm md:text-base text-muted-foreground max-w-md mx-auto">
-          Drop a page. Tobira finds the panels and walks you through them.
-        </p>
-      </div>
-      <DropZone onUploadSuccess={onUploadSuccess} />
+      {/* Chapter processing takeover (upload → per-page progress → start) */}
+      {currentChapter && !chapterReaderOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 900 }}>
+          <PageProcessing
+            theme="light"
+            mobile={isMobile}
+            pageCount={currentChapter.pageCount}
+            pages={chapterDetection.pages}
+            doneCount={chapterDetection.doneCount}
+            page1Ready={chapterDetection.page1Ready}
+            allDone={chapterDetection.allDone}
+            onCancel={handleChapterCancel}
+            onStart={handleChapterStart}
+          />
+        </div>
+      )}
+
+      {/* Continuous cross-page chapter reader (full-viewport takeover) */}
+      {chapterReaderOpen && currentChapter && chapterPages.length > 0 && (
+        <ChapterReaderShell
+          pages={chapterPages}
+          totalPages={currentChapter.pageCount}
+          theme="dark"
+          mobile={isMobile}
+          startPage={chapterStart.page}
+          startPanel={chapterStart.panel}
+          onClose={handleChapterClose}
+          onRequestPage={handleRequestPage}
+        />
+      )}
     </div>
   );
 }
