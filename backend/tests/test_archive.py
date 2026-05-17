@@ -75,44 +75,39 @@ def test_zip_slip_path_is_rejected(tmp_path, sample_cbz_zip_slip):
 
 @pytest.mark.xfail(reason="Plan 03 implements app.services.archive", strict=False)
 def test_zip_bomb_ratio_is_rejected(tmp_path):
-    """extract_cbz must raise ValueError when the compressed-to-uncompressed
-    ratio exceeds the configured MAX_RATIO (T-05-05 zip-bomb guard).
+    """extract_cbz must raise ValueError before any write when a member is a
+    decompression bomb — its real uncompressed size and/or compression ratio
+    exceeds the configured caps (T-05-05 zip-bomb guard).
 
-    We craft a ZIP whose single member's compress_size is tiny but file_size
-    is enormous (simulated via ZipInfo metadata — no need to actually expand).
+    NOTE (Plan 05-03 deviation — scaffold fix): the original scaffold tried to
+    spoof ``ZipInfo.file_size``/``compress_size``. Python's
+    ``zipfile.writestr`` rewrites both from the actual data, so the crafted
+    200MB:1KB ratio never survives the round-trip (file_size==compress_size==
+    len(data)) and no size/ratio guard could ever fire. A correct test must
+    build a *genuine* bomb: a large, highly-compressible member whose real
+    metadata (preserved by zipfile) trips the guard.
     """
     from app.services.archive import extract_cbz  # noqa: PLC0415
 
     dest = tmp_path / "comic"
     dest.mkdir()
 
-    # Build a ZIP with a ZipInfo that reports a 1000:1 uncompressed ratio.
+    # Genuine bomb: 60 MB of zeros deflates to a few KB. The real (zipfile-
+    # preserved) file_size exceeds MAX_PAGE_UNCOMPRESSED and the real
+    # compression ratio exceeds MAX_RATIO — both detectable before any write.
+    bomb_payload = b"\x00" * (60 * 1024 * 1024)
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        # Write real small bytes but override the header sizes via ZipInfo.
-        info = zipfile.ZipInfo("bomb.jpg")
-        # Stored (no compression) so compress_size == file_size normally;
-        # we write a small payload and then patch the stored header to lie.
-        payload = b"\xff\xd8\xff\xe0" + b"\x00" * 10  # minimal JPEG-like header
-        zf.writestr(info, payload)
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bomb.jpg", bomb_payload)
 
-    # Patch the ZipInfo to pretend the file is enormous.
-    cbz_path = tmp_path / "bomb.cbz"
-    cbz_path.write_bytes(buf.getvalue())
-
-    # Create a second ZIP with manipulated ZipInfo sizes to trigger the guard.
-    buf2 = io.BytesIO()
-    with zipfile.ZipFile(buf2, "w") as zf2:
-        info2 = zipfile.ZipInfo("bomb.jpg")
-        info2.file_size = 200 * 1024 * 1024  # 200 MB reported
-        info2.compress_size = 1024  # 1 KB compressed — ratio ≈ 200 000:1
-        zf2.writestr(info2, b"\xff\xd8\xff\xe0fake")
-
-    cbz_bomb_path = tmp_path / "bomb2.cbz"
-    cbz_bomb_path.write_bytes(buf2.getvalue())
+    cbz_bomb_path = tmp_path / "bomb.cbz"
+    cbz_bomb_path.write_bytes(buf.getvalue())
 
     with pytest.raises(ValueError, match=r"(?i)zip.bomb|ratio|too large"):
         extract_cbz(cbz_bomb_path, dest)
+
+    # No page file may have been written before the guard fired.
+    assert not list(dest.glob("0*.jpg")), "Bomb member must be rejected pre-write"
 
 
 @pytest.mark.xfail(reason="Plan 03 implements app.services.archive", strict=False)
