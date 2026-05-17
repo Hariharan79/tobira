@@ -154,13 +154,19 @@ export function useDeepLinkGuard(opts?: DeepLinkOpts): UseDeepLinkGuardReturn {
     panel: number;
   } | null>(null);
 
+  const pageCount = opts?.pageCount;
+  const comicUuid = opts?.comicUuid;
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const resolved = resolveDeepLinkIntent(window.location.hash, opts);
+    // pageCount/comicUuid drive Rule 3 once the manifest is known.
+    const resolved = resolveDeepLinkIntent(window.location.hash, {
+      pageCount,
+      comicUuid,
+    });
     setIntent(resolved);
     setPosition(resolved === "strip" ? null : getPositionFromHash());
-    // opts.pageCount/comicUuid drive Rule 3 once the manifest is known.
-  }, [opts?.pageCount, opts?.comicUuid]);
+  }, [pageCount, comicUuid]);
 
   const commit = useCallback((page: number, panel: number) => {
     commitPosition(page, panel);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getChapterEventsUrl, getChapterStatus } from "@/lib/api";
 import type { PageStatusValue } from "@/lib/types";
