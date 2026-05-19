@@ -119,12 +119,20 @@ export function getChapterEventsUrl(comicUuid: string): string {
 }
 
 /**
- * Plain status URL for a console-quiet existence probe via the Fetch API.
- * (axios/XHR and EventSource log non-2xx to the console; `fetch()` does not —
- * used to validate a restored chapter ref before any noisy request fires.)
+ * Console-quiet existence probes. The backend `/exists` routes ALWAYS
+ * return 200 `{exists: bool}` — a 404 (even via fetch) is logged to the
+ * browser console by Safari/WebKit. The client validates a restored
+ * localStorage ref through these BEFORE any image/detect/SSE request, so a
+ * wiped backend (ephemeral FS, D-10) degrades with zero console errors (D-15).
  */
-export function getChapterStatusUrl(comicUuid: string): string {
-  return `${API_URL}/api/chapter/${comicUuid}/status`;
+export async function checkUploadExists(uuid: string): Promise<boolean> {
+  const response = await api.get<{ exists: boolean }>(`/api/uploads/${uuid}/exists`);
+  return response.data.exists === true;
+}
+
+export async function checkChapterExists(comicUuid: string): Promise<boolean> {
+  const response = await api.get<{ exists: boolean }>(`/api/chapter/${comicUuid}/exists`);
+  return response.data.exists === true;
 }
 
 /** Catch-up fetch for a single page's panels (D-09). */

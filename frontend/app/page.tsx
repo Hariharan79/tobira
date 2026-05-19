@@ -28,8 +28,9 @@ import {
   getImageUrl,
   getChapterPageImageUrl,
   getChapterStatus,
-  getChapterStatusUrl,
   getChapterPagePanels,
+  checkUploadExists,
+  checkChapterExists,
   type UploadResponse,
 } from "@/lib/api";
 import type { ChapterUploadResponse, ReadingDirection } from "@/lib/types";
@@ -111,9 +112,9 @@ export default function Home() {
     // currentChapter (which would open an EventSource + status XHR — both
     // log uncatchably to the console on a wiped backend, D-10/D-15). Any
     // failure → clear the stale key, land cleanly. Zero console errors.
-    fetch(getChapterStatusUrl(comicUuid))
-      .then((r) => {
-        if (r.ok) setCurrentChapter({ comicUuid, pageCount });
+    checkChapterExists(comicUuid)
+      .then((exists) => {
+        if (exists) setCurrentChapter({ comicUuid, pageCount });
         else clearChapter();
       })
       .catch(() => clearChapter());
@@ -265,9 +266,9 @@ export default function Home() {
     // Eagerly mounting <img src=url> or firing axios /detect against a wiped
     // backend logs uncatchably to the console (D-10/D-15) and drops the
     // returning visitor onto a broken reader. Any failure → clear + landing.
-    fetch(url)
-      .then((r) => {
-        if (r.ok) {
+    checkUploadExists(uuid)
+      .then((exists) => {
+        if (exists) {
           setCurrentImage({ uuid, url });
           runDetection(uuid);
         } else {

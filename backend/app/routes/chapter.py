@@ -121,6 +121,19 @@ async def get_manifest(comic_uuid: str) -> ChapterManifest:
         raise HTTPException(status_code=404, detail="Chapter not found") from exc
 
 
+@router.get("/api/chapter/{comic_uuid}/exists")
+async def chapter_exists(comic_uuid: str) -> dict:
+    """
+    Console-quiet existence probe — ALWAYS returns 200 {"exists": bool}.
+
+    A 404 (even via fetch/EventSource) is logged to the browser console by
+    Safari/WebKit. The client validates a restored localStorage chapter ref
+    against this before opening the EventSource / status poll, so a wiped
+    backend (ephemeral FS, D-10) degrades with ZERO console errors (D-15).
+    """
+    return {"exists": _comic_dir(comic_uuid).exists()}
+
+
 @router.get("/api/chapter/{comic_uuid}/status")
 async def get_status(comic_uuid: str) -> dict:
     """Polling fallback (Pitfall 5): per-page status + the page-1-ready gate."""

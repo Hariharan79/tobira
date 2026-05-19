@@ -62,3 +62,11 @@ def test_get_upload_returns_404_for_unknown_uuid(client):
     """Test that GET /api/uploads/<uuid> returns 404 for unknown UUID."""
     response = client.get("/api/uploads/nonexistent-uuid")
     assert response.status_code == 404
+
+
+def test_upload_exists_probe_is_always_200(client):
+    """The /exists probe must NEVER 404 — Safari/WebKit logs any 404 to the
+    browser console (D-15). Unknown uuid → 200 {"exists": false}."""
+    response = client.get("/api/uploads/nonexistent-uuid/exists")
+    assert response.status_code == 200
+    assert response.json() == {"exists": False}

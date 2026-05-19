@@ -132,3 +132,11 @@ def test_status_reports_per_page_progress_and_page1_gate(client, sample_cbz):
     # page1_ready is a bool gate — may be False immediately after upload if
     # detection hasn't completed, but the key must always be present.
     assert isinstance(status_data["page1_ready"], bool)
+
+
+def test_chapter_exists_probe_is_always_200(client):
+    """The /exists probe must NEVER 404 — Safari/WebKit logs any 404 to the
+    browser console (D-15). Unknown comic_uuid → 200 {"exists": false}."""
+    response = client.get("/api/chapter/nonexistent-uuid/exists")
+    assert response.status_code == 200
+    assert response.json() == {"exists": False}

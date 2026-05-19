@@ -84,3 +84,21 @@ async def get_upload(file_uuid: str):
             )
 
     raise HTTPException(status_code=404, detail="File not found")
+
+
+@router.get("/api/uploads/{file_uuid}/exists")
+async def upload_exists(file_uuid: str) -> dict:
+    """
+    Console-quiet existence probe — ALWAYS returns 200 {"exists": bool}.
+
+    A 404 (even via the Fetch API) is logged to the browser console by
+    Safari/WebKit. The client validates a restored localStorage upload ref
+    against this before issuing any image/detect request, so a wiped
+    backend (ephemeral FS, D-10) degrades with ZERO console errors (D-15).
+    """
+    upload_path = UPLOAD_DIR / file_uuid
+    exists = upload_path.exists() and any(
+        (upload_path / f"original{ext}").exists()
+        for ext in (".jpg", ".png", ".webp")
+    )
+    return {"exists": exists}
