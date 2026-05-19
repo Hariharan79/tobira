@@ -52,7 +52,13 @@ export function ReaderShell({
   const containerRef = useRef<HTMLDivElement>(null);
   const [idx, setIdx] = useState(startAt);
   const [offset, setOffset] = useState(0); // live drag px
+  // `dragging` state drives the render (transition off / pop disabled) but
+  // MUST NOT gate the touch logic: it's set async in onTouchStart, so the
+  // first touchmove events of a fresh gesture fire before React commits it
+  // and were being dropped — "not responsive the first time, works on
+  // retry". `dragRef` is the synchronous truth the handlers gate on.
   const [dragging, setDragging] = useState(false);
+  const dragRef = useRef(false);
   const [onboarding, setOnboarding] = useState(showOnboarding);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -134,6 +140,7 @@ export function ReaderShell({
     (target: number, withHaptic = true) => {
       const clamped = Math.max(0, Math.min(MAX_INDEX, target));
       const changed = clamped !== idx;
+      dragRef.current = false;
       setDragging(false);
       setOffset(0);
       setIdx(clamped);
@@ -215,7 +222,8 @@ export function ReaderShell({
       if (onboarding) return;
       const y = e.touches[0].clientY;
       touch.current = { y0: y, t0: performance.now(), lastY: y, lastT: performance.now() };
-      setDragging(true);
+      dragRef.current = true; // synchronous — first touchmove is honored
+      setDragging(true); // async — render only (transition/pop)
       bumpChrome();
     },
     [onboarding, bumpChrome]
@@ -223,7 +231,7 @@ export function ReaderShell({
 
   const onTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      if (!dragging) return;
+      if (!dragRef.current) return;
       const y = e.touches[0].clientY;
       let d = y - touch.current.y0;
       // Rubber-band when pulling past the first / last section
@@ -234,11 +242,12 @@ export function ReaderShell({
       touch.current.lastY = y;
       touch.current.lastT = performance.now();
     },
-    [dragging, idx, MAX_INDEX]
+    [idx, MAX_INDEX]
   );
 
   const onTouchEnd = useCallback(() => {
-    if (!dragging) return;
+    if (!dragRef.current) return;
+    dragRef.current = false;
     const dist = offset;
     const dt = Math.max(1, performance.now() - touch.current.lastT + 16);
     const vel =
@@ -254,7 +263,7 @@ export function ReaderShell({
       setOffset(0);
       if (Math.abs(dist) > 6) haptic();
     }
-  }, [dragging, offset, viewH, step, haptic]);
+  }, [offset, viewH, step, haptic]);
 
   // Keyboard
   useEffect(() => {
