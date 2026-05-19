@@ -28,6 +28,7 @@ import {
   getImageUrl,
   getChapterPageImageUrl,
   getChapterStatus,
+  getChapterStatusUrl,
   getChapterPagePanels,
   type UploadResponse,
 } from "@/lib/api";
@@ -104,13 +105,19 @@ export default function Home() {
   useEffect(() => {
     if (!chapterLoaded || chapterRestoredRef.current) return;
     chapterRestoredRef.current = true;
-    if (lastChapter) {
-      setCurrentChapter({
-        comicUuid: lastChapter.comicUuid,
-        pageCount: lastChapter.pageCount,
-      });
-    }
-  }, [chapterLoaded, lastChapter]);
+    if (!lastChapter) return;
+    const { comicUuid, pageCount } = lastChapter;
+    // Validate the stored ref with a console-QUIET fetch BEFORE setting
+    // currentChapter (which would open an EventSource + status XHR — both
+    // log uncatchably to the console on a wiped backend, D-10/D-15). Any
+    // failure → clear the stale key, land cleanly. Zero console errors.
+    fetch(getChapterStatusUrl(comicUuid))
+      .then((r) => {
+        if (r.ok) setCurrentChapter({ comicUuid, pageCount });
+        else clearChapter();
+      })
+      .catch(() => clearChapter());
+  }, [chapterLoaded, lastChapter, clearChapter]);
 
   // Stale-404 graceful degrade (Pitfall 3 / D-10 / D-15): the detection hook
   // catches the 404 and surfaces `error` WITHOUT throwing to the console.
@@ -251,14 +258,24 @@ export default function Home() {
   useEffect(() => {
     if (!isLoaded || restoredRef.current) return;
     restoredRef.current = true;
-    if (lastUpload) {
-      setCurrentImage({
-        uuid: lastUpload.uuid,
-        url: getImageUrl(lastUpload.uuid),
-      });
-      runDetection(lastUpload.uuid);
-    }
-  }, [isLoaded, lastUpload, runDetection]);
+    if (!lastUpload) return;
+    const { uuid } = lastUpload;
+    const url = getImageUrl(uuid);
+    // Validate with a console-QUIET fetch BEFORE setCurrentImage/runDetection.
+    // Eagerly mounting <img src=url> or firing axios /detect against a wiped
+    // backend logs uncatchably to the console (D-10/D-15) and drops the
+    // returning visitor onto a broken reader. Any failure → clear + landing.
+    fetch(url)
+      .then((r) => {
+        if (r.ok) {
+          setCurrentImage({ uuid, url });
+          runDetection(uuid);
+        } else {
+          clearUpload();
+        }
+      })
+      .catch(() => clearUpload());
+  }, [isLoaded, lastUpload, runDetection, clearUpload]);
 
   // Mobile viewport detection for compact minimap
   useEffect(() => {

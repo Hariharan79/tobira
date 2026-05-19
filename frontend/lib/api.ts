@@ -118,6 +118,15 @@ export function getChapterEventsUrl(comicUuid: string): string {
   return `${API_URL}/api/chapter/${comicUuid}/events`;
 }
 
+/**
+ * Plain status URL for a console-quiet existence probe via the Fetch API.
+ * (axios/XHR and EventSource log non-2xx to the console; `fetch()` does not —
+ * used to validate a restored chapter ref before any noisy request fires.)
+ */
+export function getChapterStatusUrl(comicUuid: string): string {
+  return `${API_URL}/api/chapter/${comicUuid}/status`;
+}
+
 /** Catch-up fetch for a single page's panels (D-09). */
 export async function getChapterPagePanels(
   comicUuid: string,
