@@ -338,7 +338,8 @@ export function ReaderShell({
 
         {dims &&
           page.panels.map((panel, i) => {
-            const isActive = i === idx && !dragging;
+            const settled = i === idx; // navigation identity — NOT touch-affected
+            const isActive = settled && !dragging; // drives the pop ANIMATION only
             return (
               <section
                 key={panel.n}
@@ -356,7 +357,12 @@ export function ReaderShell({
                 }}
               >
                 <div
-                  key={isActive ? `pop-${settleKey}` : `idle-${i}`}
+                  // Key MUST NOT depend on `dragging`. Touch sets dragging,
+                  // which would flip this key and remount the node under the
+                  // finger → Safari fires touchcancel and restarts the touch
+                  // (the double-`touchstart` seen in device probing) → the
+                  // first swipe is silently dropped. Key only on settle/nav.
+                  key={settled ? `pop-${settleKey}` : `idle-${i}`}
                   style={{
                     display: "flex",
                     alignItems: "center",
