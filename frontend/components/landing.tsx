@@ -377,11 +377,25 @@ function navLink(t: ReturnType<typeof tokens>) {
 
 function LogoMark({ theme }: { theme: ReaderTheme }) {
   const t = tokens(theme);
+  // New Tobira mark — door/panel ajar + halftone corner. Token-driven so it
+  // inverts with the theme toggle (matches the light/dark export 1:1).
   return (
-    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-      <rect x="1" y="1" width="20" height="20" fill="none" stroke={t.ink} strokeWidth="2" />
-      <rect x="11" y="1" width="10" height="20" fill={t.accent} stroke={t.ink} strokeWidth="2" />
-      <circle cx="14.5" cy="11" r="1.5" fill={t.bg} />
+    <svg width="22" height="22" viewBox="0 0 64 64" role="img" aria-label="Tobira">
+      <rect x="3" y="3" width="58" height="58" fill="none" stroke={t.ink} strokeWidth="2" />
+      <rect x="33" y="4" width="27" height="56" fill={t.accent} />
+      <line x1="32" y1="4" x2="32" y2="28" stroke={t.ink} strokeWidth="2" />
+      <line x1="32" y1="36" x2="32" y2="60" stroke={t.ink} strokeWidth="2" />
+      <circle cx="38" cy="32" r="2" fill={t.bg} />
+      <g fill={t.ink}>
+        <circle cx="9" cy="47" r="1" />
+        <circle cx="17" cy="47" r="1" />
+        <circle cx="25" cy="47" r="1" />
+        <circle cx="9" cy="55" r="1" />
+        <circle cx="17" cy="55" r="1" />
+        <circle cx="25" cy="55" r="1" />
+        <circle cx="13" cy="51" r="1" />
+        <circle cx="21" cy="51" r="1" />
+      </g>
     </svg>
   );
 }
