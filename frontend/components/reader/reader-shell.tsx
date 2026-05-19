@@ -205,7 +205,14 @@ export function ReaderShell({
   // ── Touch: drag with resistance + flick-to-commit + rubber-band ──
   const onTouchStart = useCallback(
     (e: React.TouchEvent) => {
-      if (onboarding || locked.current) return;
+      // Do NOT bail on locked.current here. `locked` is held for SETTLE_MS
+      // (460ms) after every commit to keep wheel/trackpad bursts from
+      // stacking — but gating touchstart on it made the feed ignore any
+      // new swipe during the settle, so rapid TikTok-style flicks were
+      // silently dropped. Touch must be able to interrupt the settle
+      // (goTo clamps + re-arms the timer, so re-committing mid-animation
+      // is safe). Wheel still respects `locked` via its own handler.
+      if (onboarding) return;
       const y = e.touches[0].clientY;
       touch.current = { y0: y, t0: performance.now(), lastY: y, lastT: performance.now() };
       setDragging(true);
