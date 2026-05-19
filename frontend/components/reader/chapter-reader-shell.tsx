@@ -291,14 +291,29 @@ export function ChapterReaderShell({
     return () => window.removeEventListener("keydown", onKey);
   }, [step, onClose]);
 
-  const touch = useRef({ y0: 0 });
+  // Touch: commit on EITHER a deliberate drag OR a quick flick. The flick
+  // (velocity) path is what makes TikTok-style fast short swipes register —
+  // a distance-only threshold silently drops them. Mirrors the proven
+  // Phase-4 reader feel without forking reader-shell.tsx's locked constants.
+  const FLICK_VELOCITY = 0.3; // px/ms — a brisk flick commits even if short
+  const DRAG_DISTANCE = 40; // px — a slow drag must travel at least this far
+  const touch = useRef({ y0: 0, t0: 0, lastY: 0, lastT: 0 });
   const onTouchStart = (e: React.TouchEvent) => {
-    touch.current.y0 = e.touches[0].clientY;
+    const y = e.touches[0].clientY;
+    const now = performance.now();
+    touch.current = { y0: y, t0: now, lastY: y, lastT: now };
     bumpChrome();
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    touch.current.lastY = e.touches[0].clientY;
+    touch.current.lastT = performance.now();
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const dy = e.changedTouches[0].clientY - touch.current.y0;
-    if (Math.abs(dy) > 48) step(dy < 0 ? 1 : -1);
+    const dt = Math.max(1, touch.current.lastT - touch.current.t0);
+    const velocity = (touch.current.lastY - touch.current.y0) / dt;
+    const committed = Math.abs(dy) > DRAG_DISTANCE || Math.abs(velocity) > FLICK_VELOCITY;
+    if (committed) step(dy < 0 ? 1 : -1);
   };
 
   const restartChapter = useCallback(() => goTo(0), [goTo]);
@@ -330,6 +345,7 @@ export function ChapterReaderShell({
       ref={containerRef}
       onMouseMove={bumpChrome}
       onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       style={{
         position: "fixed",
