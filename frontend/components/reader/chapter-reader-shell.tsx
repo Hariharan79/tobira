@@ -165,6 +165,8 @@ export function ChapterReaderShell({
   const [viewH, setViewH] = useState(0);
   const [dims, setDims] = useState<Record<number, { w: number; h: number }>>({});
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [offset, setOffset] = useState(0); // live drag px (finger-follow)
+  const [dragging, setDragging] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clampedIdx = Math.max(0, Math.min(MAX_INDEX, idx));
@@ -249,6 +251,8 @@ export function ChapterReaderShell({
 
   const goTo = useCallback(
     (target: number) => {
+      setDragging(false);
+      setOffset(0);
       setIdx(Math.max(0, Math.min(MAX_INDEX, target)));
       bumpChrome();
     },
@@ -291,34 +295,58 @@ export function ChapterReaderShell({
     return () => window.removeEventListener("keydown", onKey);
   }, [step, onClose]);
 
-  // Touch: commit on EITHER a deliberate drag OR a quick flick. The flick
-  // (velocity) path is what makes TikTok-style fast short swipes register —
-  // a distance-only threshold silently drops them. Mirrors the proven
-  // Phase-4 reader feel without forking reader-shell.tsx's locked constants.
-  const FLICK_VELOCITY = 0.3; // px/ms — a brisk flick commits even if short
-  const DRAG_DISTANCE = 40; // px — a slow drag must travel at least this far
-  const touch = useRef({ y0: 0, t0: 0, lastY: 0, lastT: 0 });
+  // Robust viewport height — never 0 (a 0 here would stack every section at
+  // top:0 and make the feed look frozen). Falls back to window height.
+  const vh = viewH || (typeof window !== "undefined" ? window.innerHeight : 0);
+
+  // Touch: live finger-follow + spring-snap (the TikTok feel). The panel
+  // tracks the thumb during the drag, rubber-bands at the ends, and on
+  // release commits if the swipe crossed a small distance OR was a quick
+  // flick — otherwise it springs back. Distance-only / no-feedback handling
+  // is what made fast short swipes feel dropped.
+  const FLICK_VELOCITY = 0.35; // px/ms — a brisk flick commits even if short
+  const COMMIT_FRAC = 0.14; // fraction of viewport for a deliberate drag
+  const RUBBER = 0.3; // overscroll damping past the first/last section
+  const touch = useRef({ y0: 0, t0: 0, lastY: 0, lastT: 0, active: false });
+
   const onTouchStart = (e: React.TouchEvent) => {
     const y = e.touches[0].clientY;
     const now = performance.now();
-    touch.current = { y0: y, t0: now, lastY: y, lastT: now };
+    touch.current = { y0: y, t0: now, lastY: y, lastT: now, active: true };
+    setDragging(true);
     bumpChrome();
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    touch.current.lastY = e.touches[0].clientY;
+    if (!touch.current.active) return;
+    const y = e.touches[0].clientY;
+    let d = y - touch.current.y0;
+    const atTop = clampedIdx <= 0 && d > 0;
+    const atBottom = clampedIdx >= MAX_INDEX && d < 0;
+    if (atTop || atBottom) d *= RUBBER; // resistance at the ends
+    touch.current.lastY = y;
     touch.current.lastT = performance.now();
+    setOffset(d);
   };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    const dy = e.changedTouches[0].clientY - touch.current.y0;
+  const onTouchEnd = () => {
+    if (!touch.current.active) return;
+    touch.current.active = false;
+    const dist = touch.current.lastY - touch.current.y0;
     const dt = Math.max(1, touch.current.lastT - touch.current.t0);
-    const velocity = (touch.current.lastY - touch.current.y0) / dt;
-    const committed = Math.abs(dy) > DRAG_DISTANCE || Math.abs(velocity) > FLICK_VELOCITY;
-    if (committed) step(dy < 0 ? 1 : -1);
+    const velocity = dist / dt; // px/ms over the whole gesture
+    const threshold = (vh || 600) * COMMIT_FRAC;
+    const committed = Math.abs(dist) > threshold || Math.abs(velocity) > FLICK_VELOCITY;
+    if (committed) {
+      step(dist < 0 ? 1 : -1); // swipe up → next, down → prev
+    } else {
+      // not enough — spring back to the current section
+      setDragging(false);
+      setOffset(0);
+    }
   };
 
   const restartChapter = useCallback(() => goTo(0), [goTo]);
 
-  const trackY = -clampedIdx * viewH;
+  const trackY = -clampedIdx * vh + offset;
   const totalPanels = sections.filter((s) => s.kind === "panel").length;
   const atEnd = currentSection?.kind === "end";
 
@@ -365,7 +393,7 @@ export function ChapterReaderShell({
           inset: 0,
           willChange: "transform",
           transform: `translate3d(0, ${trackY}px, 0)`,
-          transition: "transform 360ms cubic-bezier(0.22,0.61,0.36,1)",
+          transition: dragging ? "none" : "transform 320ms cubic-bezier(0.22,0.61,0.36,1)",
         }}
       >
         {sections.map((s, i) => (
@@ -373,10 +401,10 @@ export function ChapterReaderShell({
             key={`${s.kind}-${i}`}
             style={{
               position: "absolute",
-              top: i * viewH,
+              top: i * vh,
               left: 0,
               width: "100%",
-              height: viewH || "100%",
+              height: vh || "100%",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
