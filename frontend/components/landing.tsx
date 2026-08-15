@@ -7,6 +7,13 @@ import { tokens, zineButtonStyle, type ReaderTheme } from "@/components/reader";
 import { ResumeBanner } from "@/components/chapter/resume-banner";
 import type { UploadResponse } from "@/lib/api";
 import type { ChapterUploadResponse } from "@/lib/types";
+import {
+  DEMO_ATTRIBUTION,
+  DEMO_COVER_URL,
+  DEMO_PAGE_COUNT,
+  DEMO_PANEL_COUNT,
+  DEMO_TITLE,
+} from "@/lib/demo";
 
 // The interactive dropzone is a client island loaded lazily so the landing
 // route ships minimal JS (Lighthouse — RESEARCH §Lighthouse Remediation).
@@ -20,6 +27,9 @@ interface LandingProps {
   mobile?: boolean;
   onSingleSuccess: (data: UploadResponse) => void;
   onChapterSuccess: (data: ChapterUploadResponse) => void;
+  /** Public demo deployment: curated chapter entry instead of upload UI. */
+  demoMode?: boolean;
+  onDemoStart?: () => void;
   showResume?: boolean;
   resumePageN?: number;
   resumePanelN?: number;
@@ -37,6 +47,8 @@ export function Landing({
   mobile = false,
   onSingleSuccess,
   onChapterSuccess,
+  demoMode = false,
+  onDemoStart,
   showResume = false,
   resumePageN = 1,
   resumePanelN = 1,
@@ -136,15 +148,28 @@ export function Landing({
           >
             Start reading
           </h2>
-          <p style={{ margin: "4px 0 18px", fontSize: 14, opacity: 0.6 }}>
-            Files stay on your device. We never upload anything to a server.
-          </p>
-          <ChapterUploadEntry
-            theme={theme}
-            mobile={mobile}
-            onChapterSuccess={onChapterSuccess}
-            onSingleSuccess={onSingleSuccess}
-          />
+          {demoMode ? (
+            <>
+              <p style={{ margin: "4px 0 18px", fontSize: 14, opacity: 0.6 }}>
+                This public demo ships one openly-licensed chapter — nothing is uploaded here. Run
+                Tobira locally to read your own files.
+              </p>
+              <DemoEntry theme={theme} mobile={mobile} onStart={onDemoStart} />
+            </>
+          ) : (
+            <>
+              <p style={{ margin: "4px 0 18px", fontSize: 14, opacity: 0.6 }}>
+                Pages are sent only to your own locally-running detection server and are never
+                stored permanently.
+              </p>
+              <ChapterUploadEntry
+                theme={theme}
+                mobile={mobile}
+                onChapterSuccess={onChapterSuccess}
+                onSingleSuccess={onSingleSuccess}
+              />
+            </>
+          )}
         </section>
 
         {/* How it works */}
@@ -171,7 +196,7 @@ export function Landing({
             <HowStep
               n={1}
               title="Drop a page or .CBZ"
-              body="One image, or a whole chapter archive. Everything is processed locally in your browser."
+              body="One image, or a whole chapter archive. Pages are processed on the spot — nothing is kept."
               theme={theme}
             />
             <HowStep
@@ -193,6 +218,99 @@ export function Landing({
 
       <LandingFooter theme={theme} mobile={mobile} />
     </div>
+  );
+}
+
+function DemoEntry({
+  theme,
+  mobile,
+  onStart,
+}: {
+  theme: ReaderTheme;
+  mobile: boolean;
+  onStart?: () => void;
+}) {
+  const t = tokens(theme);
+  return (
+    <article
+      aria-label="Demo chapter"
+      style={{
+        border: `2px solid ${t.ink}`,
+        boxShadow: `4px 4px 0 0 ${t.shadow}`,
+        background: t.bg,
+        display: "flex",
+        flexDirection: mobile ? "column" : "row",
+        gap: mobile ? 14 : 22,
+        padding: 18,
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- static demo asset */}
+      <img
+        src={DEMO_COVER_URL}
+        alt={`${DEMO_TITLE} — first page`}
+        style={{
+          width: mobile ? "100%" : 170,
+          height: mobile ? 220 : 230,
+          objectFit: "cover",
+          objectPosition: "top",
+          border: `2px solid ${t.ink}`,
+        }}
+      />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div
+          style={{
+            fontFamily: "'Geist Mono', ui-monospace, monospace",
+            fontSize: 11,
+            letterSpacing: "0.16em",
+            color: t.dim,
+          }}
+        >
+          CURATED DEMO · {DEMO_PAGE_COUNT} PAGES · {DEMO_PANEL_COUNT} PANELS
+        </div>
+        <h3 style={{ margin: 0, fontSize: mobile ? 22 : 26, fontWeight: 700, lineHeight: 1.1 }}>
+          {DEMO_TITLE}
+        </h3>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, opacity: 0.8, maxWidth: 520 }}>
+          Panels detected by the same model that powers the full tool. Swipe or arrow through the
+          chapter beat by beat.
+        </p>
+        <div style={{ marginTop: "auto", paddingTop: 10 }}>
+          <button
+            type="button"
+            onClick={() => onStart?.()}
+            style={{
+              ...zineButtonStyle(t, true),
+              padding: "12px 22px",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            READ THE DEMO →
+          </button>
+        </div>
+        <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.65 }}>
+          {DEMO_ATTRIBUTION.work} by {DEMO_ATTRIBUTION.author} ·{" "}
+          <a
+            href="https://creativecommons.org/licenses/by/4.0/"
+            rel="noreferrer"
+            target="_blank"
+            style={{ color: "inherit" }}
+          >
+            {DEMO_ATTRIBUTION.license}
+          </a>{" "}
+          ·{" "}
+          <a
+            href={DEMO_ATTRIBUTION.url}
+            rel="noreferrer"
+            target="_blank"
+            style={{ color: "inherit" }}
+          >
+            peppercarrot.com
+          </a>
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -472,7 +590,7 @@ function LandingFooter({ theme, mobile }: { theme: ReaderTheme; mobile: boolean 
       <div>© 2026 TOBIRA · LOCAL-FIRST</div>
       <div style={{ display: "flex", gap: 16 }}>
         <a
-          href="https://github.com"
+          href="https://github.com/Hariharan79/tobira"
           rel="noreferrer"
           style={{ color: t.ink, textDecoration: "none", opacity: 0.8 }}
         >

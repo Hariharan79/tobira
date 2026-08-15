@@ -34,6 +34,7 @@ import {
   type UploadResponse,
 } from "@/lib/api";
 import type { ChapterUploadResponse, ReadingDirection } from "@/lib/types";
+import { DEMO_MODE, DEMO_PAGE_COUNT, DEMO_TITLE, getDemoChapterPages } from "@/lib/demo";
 
 export default function Home() {
   const { lastUpload, saveUpload, clearUpload, isLoaded } = useUploadPersistence();
@@ -95,6 +96,11 @@ export default function Home() {
   const [chapterPages, setChapterPages] = useState<ChapterReaderPageInput[]>([]);
   const [chapterStart, setChapterStart] = useState({ page: 0, panel: 0 });
 
+  // Demo mode (D: public demo is backend-free) — the curated chapter is
+  // bundled at build time and rendered through the SAME ChapterReaderShell.
+  const [demoReaderOpen, setDemoReaderOpen] = useState(false);
+  const demoPages = useMemo(() => (DEMO_MODE ? getDemoChapterPages() : []), []);
+
   const [deepLinkIntent, setDeepLinkIntent] = useState<DeepLinkIntent | null>(null);
   const [deepLinkPos, setDeepLinkPos] = useState<{
     page: number;
@@ -104,6 +110,8 @@ export default function Home() {
   // Chapter restore-once (mirrors the single-image restoredRef guard).
   const chapterRestoredRef = useRef(false);
   useEffect(() => {
+    // Demo deployments have no backend — never probe /exists (zero API calls).
+    if (DEMO_MODE) return;
     if (!chapterLoaded || chapterRestoredRef.current) return;
     chapterRestoredRef.current = true;
     if (!lastChapter) return;
@@ -257,6 +265,8 @@ export default function Home() {
   // effect and triggers a duplicate /api/detect call.
   const restoredRef = useRef(false);
   useEffect(() => {
+    // Demo deployments have no backend — never probe /exists (zero API calls).
+    if (DEMO_MODE) return;
     if (!isLoaded || restoredRef.current) return;
     restoredRef.current = true;
     if (!lastUpload) return;
@@ -411,6 +421,8 @@ export default function Home() {
           <Landing
             onSingleSuccess={handleUploadSuccess}
             onChapterSuccess={handleChapterSuccess}
+            demoMode={DEMO_MODE}
+            onDemoStart={() => setDemoReaderOpen(true)}
             showResume={deepLinkIntent === "show-resume"}
             resumePageN={(deepLinkPos?.page ?? 0) + 1}
             resumePanelN={(deepLinkPos?.panel ?? 0) + 1}
@@ -449,6 +461,18 @@ export default function Home() {
             onStart={handleChapterStart}
           />
         </div>
+      )}
+
+      {/* Demo chapter reader (static assets, no backend) */}
+      {demoReaderOpen && demoPages.length > 0 && (
+        <ChapterReaderShell
+          pages={demoPages}
+          title={DEMO_TITLE}
+          totalPages={DEMO_PAGE_COUNT}
+          theme="dark"
+          mobile={isMobile}
+          onClose={() => setDemoReaderOpen(false)}
+        />
       )}
 
       {/* Continuous cross-page chapter reader (full-viewport takeover) */}

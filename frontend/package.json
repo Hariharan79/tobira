@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:demo": "NEXT_PUBLIC_DEMO_MODE=1 next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
