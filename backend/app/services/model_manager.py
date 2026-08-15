@@ -1,8 +1,15 @@
 """
-ModelManager: Singleton that manages YOLO model instances.
+ModelManager: Singleton that manages the YOLO panel-detection model.
 
-Lazy-loads models on first request to avoid blocking startup.
-Models are downloaded from HuggingFace and cached in backend/models/.
+Lazy-loads the model on first request to avoid blocking startup.
+The model is downloaded from HuggingFace and cached in backend/models/.
+
+A single manga-trained detector serves all content types: 2026-07
+benchmarking on Pepper&Carrot (color/euro) and golden-age Western pages
+showed it generalizes across styles, while the previous Western-specific
+YOLOv12x (trained on 86 images) missed obvious panels and collapsed at
+imgsz >= 1024. Trained on Manga109-s (used under its license conditions;
+see MODEL.md attribution).
 """
 
 from pathlib import Path
@@ -12,59 +19,33 @@ from ultralytics import YOLO
 
 
 class ModelManager:
-    """Singleton that manages YOLO model instances."""
+    """Singleton that manages the YOLO panel model instance."""
 
-    _manga_model: YOLO | None = None
-    _western_model: YOLO | None = None
+    _panel_model: YOLO | None = None
     _models_dir = Path("models")
 
     @classmethod
-    def get_manga_model(cls) -> YOLO:
+    def get_panel_model(cls) -> YOLO:
         """
-        Get the manga panel detector model (lazy-loaded).
+        Get the universal panel detector model (lazy-loaded).
 
         Uses leoxs22/manga-panel-detector-yolo26n from HuggingFace.
-        mAP50: 0.956, 2.7MB INT8 model, Apache 2.0 license.
+        mAP50: 0.956, ~15MB FP32 model, Apache 2.0 license,
+        trained on Manga109-s.
         """
-        if cls._manga_model is None:
+        if cls._panel_model is None:
             model_path = cls._models_dir / "manga_panel_detector_fp32.pt"
             if not model_path.exists():
-                cls._download_manga_model()
-            cls._manga_model = YOLO(str(model_path))
-        return cls._manga_model
+                cls._download_panel_model()
+            cls._panel_model = YOLO(str(model_path))
+        return cls._panel_model
 
     @classmethod
-    def get_western_model(cls) -> YOLO:
-        """
-        Get the Western comic panel detector model (lazy-loaded).
-
-        Uses mosesb/best-comic-panel-detection from HuggingFace.
-        mAP50: 0.991, YOLOv12x, Apache 2.0 license.
-        """
-        if cls._western_model is None:
-            model_path = cls._models_dir / "best.pt"
-            if not model_path.exists():
-                cls._download_western_model()
-            cls._western_model = YOLO(str(model_path))
-        return cls._western_model
-
-    @classmethod
-    def _download_manga_model(cls) -> None:
-        """Download manga model from HuggingFace."""
+    def _download_panel_model(cls) -> None:
+        """Download the panel model from HuggingFace."""
         cls._models_dir.mkdir(exist_ok=True)
         hf_hub_download(
             repo_id="leoxs22/manga-panel-detector-yolo26n",
             filename="manga_panel_detector_fp32.pt",
             local_dir=cls._models_dir,
-        )
-
-    @classmethod
-    def _download_western_model(cls) -> None:
-        """Download Western comic model from HuggingFace."""
-        cls._models_dir.mkdir(exist_ok=True)
-        hf_hub_download(
-            repo_id="mosesb/best-comic-panel-detection",
-            filename="best.pt",
-            local_dir=cls._models_dir,
-            local_dir_use_symlinks=False,
         )

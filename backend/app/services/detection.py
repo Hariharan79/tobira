@@ -55,6 +55,35 @@ def detect_content_type(image_path: Path) -> str:
             return "western"
 
 
+def _box_iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    """IoU of two normalized xywh boxes."""
+    ax0, ay0, ax1, ay1 = a[0], a[1], a[0] + a[2], a[1] + a[3]
+    bx0, by0, bx1, by1 = b[0], b[1], b[0] + b[2], b[1] + b[3]
+    ix = max(0.0, min(ax1, bx1) - max(ax0, bx0))
+    iy = max(0.0, min(ay1, by1) - max(ay0, by0))
+    inter = ix * iy
+    union = a[2] * a[3] + b[2] * b[3] - inter
+    return inter / union if union > 0 else 0.0
+
+
+def merge_duplicate_panels(panels: list[Panel], iou_threshold: float = 0.55) -> list[Panel]:
+    """
+    Drop near-duplicate detections, keeping the highest-confidence box.
+
+    The panel model occasionally emits overlapping boxes for the same panel
+    on color/Western art (out-of-distribution for its training data).
+    Returns a new list; panel ids are reassigned sequentially.
+    """
+    survivors: list[Panel] = []
+    for panel in sorted(panels, key=lambda p: -p.confidence):
+        if all(_box_iou(panel.bbox, kept.bbox) < iou_threshold for kept in survivors):
+            survivors.append(panel)
+    return [
+        Panel(id=i + 1, bbox=p.bbox, confidence=p.confidence)
+        for i, p in enumerate(survivors)
+    ]
+
+
 def detect_panels(
     image_path: Path,
     model_hint: str | None = None,
@@ -62,6 +91,12 @@ def detect_panels(
 ) -> DetectionResponse:
     """
     Detect panels in a comic page with reading order inference.
+
+    A single panel model is used for all content types: benchmarking
+    (2026-07, Pepper&Carrot + golden-age pages) showed the manga-trained
+    detector generalizes across styles, while the Western-specific model
+    missed panels at 640 and collapsed at higher resolutions. content_type
+    now only drives reading direction and the reported type.
 
     Args:
         image_path: Path to the image file
@@ -72,19 +107,18 @@ def detect_panels(
         DetectionResponse with panels in reading order, content type, direction, and ambiguity flag
     """
     # Auto-detect content type if no hint provided (per D-02)
-    content_type = model_hint if model_hint in ("manga", "western") else detect_content_type(image_path)
-
-    # Select model based on content type (per D-01)
-    if content_type == "manga":
-        model = ModelManager.get_manga_model()
+    if model_hint in ("manga", "western"):
+        content_type = model_hint
     else:
-        model = ModelManager.get_western_model()
+        content_type = detect_content_type(image_path)
 
-    # Run inference with confidence threshold 0.25 (Claude's discretion)
+    model = ModelManager.get_panel_model()
+
+    # imgsz=1024: benchmark sweet spot (640 misses small panels, 1280 regresses)
     results = model.predict(
         source=str(image_path),
         conf=0.25,
-        imgsz=640,
+        imgsz=1024,
         verbose=False,
     )
 
@@ -116,6 +150,9 @@ def detect_panels(
                     confidence=float(box.conf),
                 )
             )
+
+    # Collapse near-duplicate boxes before ordering
+    panels = merge_duplicate_panels(panels)
 
     # Determine effective direction: use provided or auto-detect from content_type per D-01
     effective_direction: Literal["ltr", "rtl"] = direction if direction else (

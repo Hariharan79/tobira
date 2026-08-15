@@ -6,7 +6,45 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.services.detection import detect_content_type, detect_panels
+from app.models.schemas import Panel
+from app.services.detection import (
+    detect_content_type,
+    detect_panels,
+    merge_duplicate_panels,
+)
+
+
+class TestMergeDuplicatePanels:
+    """Tests for duplicate-box merging (model emits overlapping boxes on color art)."""
+
+    def test_near_identical_boxes_collapse_to_highest_confidence(self):
+        panels = [
+            Panel(id=1, bbox=(0.1, 0.1, 0.4, 0.3), confidence=0.80),
+            Panel(id=2, bbox=(0.11, 0.1, 0.4, 0.31), confidence=0.95),
+        ]
+        merged = merge_duplicate_panels(panels)
+        assert len(merged) == 1
+        assert merged[0].confidence == 0.95
+
+    def test_distinct_boxes_are_kept(self):
+        panels = [
+            Panel(id=1, bbox=(0.0, 0.0, 0.45, 0.3), confidence=0.9),
+            Panel(id=2, bbox=(0.5, 0.0, 0.45, 0.3), confidence=0.85),
+            Panel(id=3, bbox=(0.0, 0.5, 0.95, 0.4), confidence=0.8),
+        ]
+        merged = merge_duplicate_panels(panels)
+        assert len(merged) == 3
+
+    def test_ids_reassigned_sequentially(self):
+        panels = [
+            Panel(id=7, bbox=(0.0, 0.0, 0.4, 0.3), confidence=0.9),
+            Panel(id=9, bbox=(0.5, 0.5, 0.4, 0.3), confidence=0.7),
+        ]
+        merged = merge_duplicate_panels(panels)
+        assert [p.id for p in merged] == [1, 2]
+
+    def test_empty_input_returns_empty(self):
+        assert merge_duplicate_panels([]) == []
 
 
 class TestDetectContentType:
